@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Enable class-based dark mode in Tailwind v4 so `dark:` variants key off
+   a `.dark` class on <html>. The ThemeContext toggles that class; the rest of
+   the app remains unconditionally dark and is unaffected. */
+@custom-variant dark (&:where(.dark, .dark *));

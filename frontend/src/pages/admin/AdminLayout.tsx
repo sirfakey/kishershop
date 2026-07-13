@@ -9,6 +9,7 @@ import {
   LogOut,
   ArrowLeftRight,
   Megaphone,
+  Tag,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/categories", label: "Categories", icon: FolderOpen },
   { to: "/admin/trades", label: "Trade Requests", icon: ArrowLeftRight },
+  { to: "/admin/coupons", label: "Coupons", icon: Tag },
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];

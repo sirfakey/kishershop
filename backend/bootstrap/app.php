@@ -15,6 +15,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // Security hardening headers (HSTS, X-Frame-Options, etc.)
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 
+        // API-only app: don't redirect unauthenticated users to a "login" route.
+        // Instead, throw AuthenticationException so it returns JSON 401.
+        $middleware->redirectGuestsTo(function (\Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                throw new \Illuminate\Auth\AuthenticationException('Unauthenticated.');
+            }
+        });
+
         // EXEMPT THE CHECKOUT ENDPOINT FROM CSRF VERIFICATION HERE:
         $middleware->validateCsrfTokens(except: [
             'api/checkout',

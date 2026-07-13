@@ -32,7 +32,7 @@ function GameRow({
       <img
         src={game.image_url}
         alt={game.name}
-        className="h-9 w-9 shrink-0 rounded-md object-cover bg-slate-200 dark:bg-slate-700"
+        className="h-12 w-12 shrink-0 rounded-lg object-cover bg-slate-200 dark:bg-slate-700"
         onError={(e) => {
           (e.target as HTMLImageElement).src =
             "https://placehold.co/72x72?text=" + encodeURIComponent(game.name.slice(0, 2));
@@ -80,6 +80,9 @@ export default function MegaMenu({ activeType, games, onClose }: MegaMenuProps) 
       onMouseDown={(e) => e.stopPropagation()}
       className="absolute left-1/2 top-full z-50 w-[min(960px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl shadow-black/10 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:shadow-black/40"
     >
+      {/* Gradient header row */}
+      <div className="h-1 bg-gradient-to-r from-amber-500 via-purple-500 to-amber-500 opacity-60" />
+
       <div className="grid grid-cols-1 md:grid-cols-2">
         {/* Column 1 — Popular Games */}
         <div className="border-b border-slate-200 p-5 md:border-b-0 md:border-r dark:border-slate-800">
@@ -106,10 +109,10 @@ export default function MegaMenu({ activeType, games, onClose }: MegaMenuProps) 
                   <img
                     src={g.image_url}
                     alt={g.name}
-                    className="h-10 w-10 shrink-0 rounded-md object-cover bg-slate-200 dark:bg-slate-700"
+                    className="h-12 w-12 shrink-0 rounded-lg object-cover bg-slate-200 dark:bg-slate-700"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src =
-                        "https://placehold.co/80x80?text=" + encodeURIComponent(g.name.slice(0, 2));
+                        "https://placehold.co/96x96?text=" + encodeURIComponent(g.name.slice(0, 2));
                     }}
                   />
                   <span className="truncate text-sm font-semibold text-slate-700 group-hover:text-amber-400 dark:text-slate-200">
@@ -118,6 +121,17 @@ export default function MegaMenu({ activeType, games, onClose }: MegaMenuProps) 
                 </Link>
               ))}
             </div>
+          )}
+
+          {eligible.length > 0 && (
+            <Link
+              to={activeType ? `/search?type=${activeType}` : "/category"}
+              onClick={onClose}
+              className="mt-3 flex items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-500 transition-colors hover:border-amber-500/30 hover:text-amber-400 dark:border-slate-800 dark:text-slate-400"
+            >
+              Browse All
+              <span className="text-[10px]">→</span>
+            </Link>
           )}
         </div>
 
@@ -160,6 +174,17 @@ export default function MegaMenu({ activeType, games, onClose }: MegaMenuProps) 
               ))
             )}
           </div>
+
+          {eligible.length > 0 && (
+            <Link
+              to={activeType ? `/search?type=${activeType}` : "/category"}
+              onClick={onClose}
+              className="mt-3 flex items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-slate-500 transition-colors hover:border-amber-500/30 hover:text-amber-400 dark:border-slate-800 dark:text-slate-400"
+            >
+              Browse All
+              <span className="text-[10px]">→</span>
+            </Link>
+          )}
         </div>
       </div>
     </div>

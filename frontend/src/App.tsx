@@ -17,6 +17,7 @@ import CategoriesPage from "./pages/admin/CategoriesPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import TradesPage from "./pages/admin/TradesPage";
 import AnnouncementsPage from "./pages/admin/AnnouncementsPage";
+import CouponsPage from "./pages/admin/CouponsPage";
 
 export default function App() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="trades" element={<TradesPage />} />
                   <Route path="announcements" element={<AnnouncementsPage />} />
+                  <Route path="coupons" element={<CouponsPage />} />
                 </Route>
               </Routes>
             </Router>

@@ -19,12 +19,21 @@ class Transaction extends Model
         'customer_email',
         'account_credentials',
         'custom_fields',
+        'coupon_code',
+        'coupon_id',
+        'coupon_discount',
         'status',
+        'points_earned',
+        'points_redeemed',
     ];
 
     protected $casts = [
-        'custom_fields' => 'array',
-        'price'         => 'decimal:2',
+        'custom_fields'   => 'array',
+        'price'           => 'decimal:2',
+        'coupon_discount' => 'decimal:2',
+        'coupon_id'       => 'integer',
+        'points_earned'   => 'integer',
+        'points_redeemed'  => 'integer',
     ];
 
     /**

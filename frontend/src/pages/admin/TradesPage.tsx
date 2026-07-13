@@ -29,6 +29,7 @@ export default function TradesPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [updateError, setUpdateError] = useState("");
 
   const fetchTrades = () => {
     apiJson<Trade[]>("/api/admin/trades", token)
@@ -53,7 +54,8 @@ export default function TradesPage() {
         prev.map((t) => (t.id === id ? { ...t, status } : t)),
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update status.");
+      setUpdateError(err instanceof Error ? err.message : "Failed to update status.");
+      setTimeout(() => setUpdateError(""), 3000);
     }
   };
 
@@ -75,6 +77,12 @@ export default function TradesPage() {
         <ArrowLeftRight className="h-6 w-6 text-indigo-400" />
         <h2 className="text-xl font-bold text-white">Trade Requests</h2>
       </div>
+
+      {updateError && (
+        <div className="mb-4 rounded-lg border border-rose-500/20 bg-rose-500/5 px-4 py-2 text-sm text-rose-400">
+          {updateError}
+        </div>
+      )}
 
       {trades.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-12 text-center">

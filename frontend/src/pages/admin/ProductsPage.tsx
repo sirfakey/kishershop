@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { apiJson } from "../../lib/api";
 import { Plus, Trash2, Box } from "lucide-react";
 import ImageUploader from "../../components/ImageUploader";
+import ConfirmModal from "../../components/ConfirmModal";
 
 interface ProductGroup {
   id: number;
@@ -57,6 +58,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
 
   const fetchData = () => {
     Promise.all([
@@ -92,14 +94,11 @@ export default function ProductsPage() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/admin/products`,
+      const data = await apiJson<{ message: string }>(
+        "/api/admin/products",
+        token,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
           body: JSON.stringify({
             name,
             price: parseFloat(price),
@@ -112,23 +111,6 @@ export default function ProductsPage() {
         },
       );
 
-      if (!response.ok) {
-        let message = `Failed to create product (${response.status})`;
-        try {
-          const err = await response.json();
-          if (err.message) message = err.message;
-        } catch {
-          // response wasn't JSON — stick with status message
-        }
-        throw new Error(message);
-      }
-
-      let data: { message?: string };
-      try {
-        data = await response.json();
-      } catch {
-        throw new Error("Product created but server returned an unexpected response.");
-      }
       setFormSuccess(data.message || "Product created!");
       setName("");
       setPrice("");
@@ -146,27 +128,23 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this product?")) return;
-
-    setDeletingId(id);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/admin/products/${id}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
+      await apiJson(
+        `/api/admin/products/${deleteTarget.id}`,
+        token,
+        { method: "DELETE" },
       );
 
-      if (!response.ok) throw new Error("Delete failed");
-
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Delete failed");
       setTimeout(() => setListError(""), 3000);
     } finally {
       setDeletingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -384,7 +362,7 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => handleDelete(p.id)}
+                          onClick={() => setDeleteTarget(p)}
                           disabled={deletingId === p.id}
                           className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-1.5 text-xs font-bold text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
                         >
@@ -400,6 +378,18 @@ export default function ProductsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Delete confirmation modal ── */}
+      <ConfirmModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Product"
+        message={`Are you sure you want to permanently delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        confirmLabel={deletingId ? "Deleting..." : "Delete Permanently"}
+        variant="danger"
+        loading={deletingId !== null}
+      />
     </div>
   );
 }

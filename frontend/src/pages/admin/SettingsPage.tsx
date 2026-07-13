@@ -45,30 +45,14 @@ export default function SettingsPage() {
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/settings", {
+      await apiJson("/api/admin/settings", token, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           site_name: siteName,
           logo_url: logoUrl || null,
         }),
       });
 
-      if (!response.ok) {
-        let message = `Update failed (${response.status})`;
-        try {
-          const err = await response.json();
-          if (err.message) message = err.message;
-        } catch {
-          // Response wasn't JSON
-        }
-        throw new Error(message);
-      }
-
-      await response.json();
       setFormSuccess("Branding settings updated successfully!");
 
       // Refresh the shared SettingsContext so the header updates instantly

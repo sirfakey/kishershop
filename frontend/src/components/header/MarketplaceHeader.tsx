@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
 import { useCustomerAuth } from "../../context/CustomerAuthContext";
+import { apiJson } from "../../lib/api";
 import MegaMenu from "./MegaMenu";
 import TradeModal from "../TradeModal";
 import NotificationDropdown from "../NotificationDropdown";
@@ -36,15 +37,19 @@ function IconButton({
   className?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={`relative rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white ${className}`}
-    >
-      {children}
-    </button>
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        className={`relative rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white ${className}`}
+      >
+        {children}
+      </button>
+      <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-slate-700 z-50">
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -80,10 +85,24 @@ export default function MarketplaceHeader() {
 
   // ─── Trade modal ───
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeSuccess, setTradeSuccess] = useState(false);
 
   // ─── Notifications dropdown ───
   const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notifButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiJson<unknown[]>("/api/notifications", null)
+      .then((data) => {
+        if (!cancelled) setUnreadCount(Array.isArray(data) ? data.length : 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [notifOpen]); // re-fetch each time the dropdown is opened/closed
 
   // ─── Search bar ───
   const [searchQuery, setSearchQuery] = useState("");
@@ -92,9 +111,8 @@ export default function MarketplaceHeader() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/categories")
-      .then((res) => res.json())
-      .then((data: ProductGroup[]) => {
+    apiJson<ProductGroup[]>("/api/categories", null)
+      .then((data) => {
         if (!cancelled) setGames(Array.isArray(data) ? data : []);
       })
       .catch(() => {
@@ -132,6 +150,15 @@ export default function MarketplaceHeader() {
         if (closeTimer.current) clearTimeout(closeTimer.current);
       }}
     >
+      {/* ─── Trade success banner ─── */}
+      {tradeSuccess && (
+        <div className="border-b border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center">
+          <p className="text-sm font-medium text-emerald-400">
+            Trade request submitted! We&rsquo;ll reach out to you soon.
+          </p>
+        </div>
+      )}
+
       {/* ─── Row 1 ─── */}
       <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:gap-4">
@@ -237,12 +264,16 @@ export default function MarketplaceHeader() {
               <IconButton
                 label="Notifications"
                 onClick={() => setNotifOpen((v) => !v)}
+                className={unreadCount > 0 ? "relative" : ""}
               >
                 <span
                   ref={notifButtonRef as React.RefObject<HTMLButtonElement>}
-                  className="inline-flex"
+                  className="relative inline-flex"
                 >
                   <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-white dark:ring-slate-950" />
+                  )}
                 </span>
               </IconButton>
               {notifOpen && (
@@ -285,6 +316,9 @@ export default function MarketplaceHeader() {
         <div className="mx-auto flex h-12 max-w-7xl items-center px-4">
           {/* Nav dropdown items (desktop) */}
           <nav className="hidden items-center md:flex">
+            <span className="mr-2 select-none text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              Shop
+            </span>
             {NAV_ITEMS.map((item) => {
               const isActive = activeNav === item.key;
               return (
@@ -344,7 +378,8 @@ export default function MarketplaceHeader() {
           onClose={() => setTradeModalOpen(false)}
           onSuccess={() => {
             setTradeModalOpen(false);
-            alert("Trade request submitted! We'll reach out to you soon.");
+            setTradeSuccess(true);
+            setTimeout(() => setTradeSuccess(false), 5000);
           }}
         />
       )}

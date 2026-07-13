@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { apiJson } from "../lib/api";
 
 interface AdminUser {
   id: number;
@@ -46,13 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     // Quick validation: try a lightweight authenticated request
-    fetch(`/api/admin/stats`, {
-      headers: { Authorization: `Bearer ${stored}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Token invalid");
-        return res.json();
-      })
+    apiJson("/api/admin/stats", stored)
       .then(() => {
         setToken(stored);
         setUser(getStoredUser());
@@ -67,29 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch(`/api/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      let message = `Login failed (${response.status})`;
-      try {
-        const err = await response.json();
-        if (err.message) message = err.message;
-      } catch {
-        // Response body wasn't valid JSON — stick with the status-based message
-      }
-      throw new Error(message);
-    }
-
-    let data: { token?: string; user?: { id: number; name: string; email: string } };
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error("Login failed: server returned an unexpected response.");
-    }
+    const data = await apiJson<{ token: string; user: AdminUser }>(
+      "/api/admin/login",
+      null,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
 
     if (!data.token || !data.user) {
       throw new Error("Login failed: incomplete response from server.");
@@ -103,10 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`/api/admin/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (token) {
+        await apiJson("/api/admin/logout", token, { method: "POST" });
+      }
     } catch {
       // Even if the request fails, clear local state
     }

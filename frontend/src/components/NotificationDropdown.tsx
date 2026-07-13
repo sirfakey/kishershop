@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import type { Announcement } from "../data/categories";
+import { apiJson } from "../lib/api";
 
 interface NotificationDropdownProps {
   onClose: () => void;
@@ -17,10 +18,8 @@ export default function NotificationDropdown({
   // Fetch active announcements
   useEffect(() => {
     let cancelled = false;
-    const apiUrl = import.meta.env.VITE_API_URL;
-    fetch(`${apiUrl}/api/notifications`)
-      .then((res) => res.json())
-      .then((data: Announcement[]) => {
+    apiJson<Announcement[]>("/api/notifications", null)
+      .then((data) => {
         if (!cancelled) setAnnouncements(Array.isArray(data) ? data : []);
       })
       .catch(() => {

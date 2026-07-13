@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo, Fragment } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { apiJson, apiDownload } from "../../lib/api";
-import { Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Download, ChevronDown, ChevronUp, Check, Undo2, RotateCcw, Trash2 } from "lucide-react";
+import ConfirmModal from "../../components/ConfirmModal";
 
 interface TransactionProduct {
   id: number;
@@ -88,6 +89,9 @@ export default function OrdersPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<StatusTab>("all");
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all");
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const fetchTransactions = () => {
     apiJson<Transaction[]>("/api/admin/transactions", token)
@@ -102,11 +106,13 @@ export default function OrdersPage() {
     fetchTransactions();
   }, [token]);
 
-  // ── Filtered list ──
+  // ── Filtered list (combines status tab + payment filter) ──
   const filteredTransactions = useMemo(() => {
-    if (activeTab === "all") return transactions;
-    return transactions.filter((t) => t.status === activeTab);
-  }, [transactions, activeTab]);
+    let filtered = activeTab === "all" ? transactions : transactions.filter((t) => t.status === activeTab);
+    if (paymentFilter === "paid") return filtered.filter((t) => t.status === "completed");
+    if (paymentFilter === "unpaid") return filtered.filter((t) => t.status === "pending" || t.status === "refunded");
+    return filtered;
+  }, [transactions, activeTab, paymentFilter]);
 
   // ── Tab counts ──
   const tabCounts = useMemo(() => {
@@ -123,26 +129,10 @@ export default function OrdersPage() {
   const handleStatusChange = async (id: number, newStatus: string) => {
     setUpdatingStatusId(id);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/admin/transactions/${id}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: newStatus }),
-        },
-      );
-
-      if (!response.ok) {
-        let message = `Status update failed (${response.status})`;
-        try {
-          const err = await response.json();
-          if (err.message) message = err.message;
-        } catch { /* not JSON */ }
-        throw new Error(message);
-      }
+      await apiJson(`/api/admin/transactions/${id}/status`, token, {
+        method: "PUT",
+        body: JSON.stringify({ status: newStatus }),
+      });
 
       // Optimistic update in local state
       setTransactions((prev) =>
@@ -153,6 +143,24 @@ export default function OrdersPage() {
       setTimeout(() => setError(""), 3000);
     } finally {
       setUpdatingStatusId(null);
+    }
+  };
+
+  // ── Delete handler ──
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      await apiJson(`/api/admin/transactions/${deleteTarget.id}`, token, {
+        method: "DELETE",
+      });
+      setTransactions((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setDeletingId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -186,6 +194,31 @@ export default function OrdersPage() {
           <Download className="w-4 h-4" />
           Export CSV
         </button>
+      </div>
+
+      {/* ── Payment filter row ── */}
+      <div className="flex items-center gap-1 mb-3 flex-wrap">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mr-2">Payment</span>
+        {([
+          { key: "all", label: "All" },
+          { key: "paid", label: "Paid" },
+          { key: "unpaid", label: "Unpaid" },
+        ] as const).map(({ key, label }) => {
+          const isActive = paymentFilter === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setPaymentFilter(key)}
+              className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                isActive
+                  ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                  : "text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Status tabs ── */}
@@ -291,24 +324,54 @@ export default function OrdersPage() {
                         {t.customer_email || "—"}
                       </td>
 
-                      {/* Status — dropdown selector */}
+                      {/* Status — dropdown + quick toggles */}
                       <td className="px-4 py-3">
                         {updatingStatusId === t.id ? (
                           <span className="text-xs text-slate-500 italic">updating...</span>
                         ) : (
-                          <select
-                            value={t.status}
-                            onChange={(e) =>
-                              handleStatusChange(t.id, e.target.value)
-                            }
-                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold border outline-none cursor-pointer ${statusBadgeClasses(t.status)}`}
-                          >
-                            {STATUS_OPTIONS.map((opt) => (
-                              <option key={opt} value={opt} className="bg-slate-900 text-white">
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={t.status}
+                              onChange={(e) =>
+                                handleStatusChange(t.id, e.target.value)
+                              }
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold border outline-none cursor-pointer ${statusBadgeClasses(t.status)}`}
+                            >
+                              {STATUS_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt} className="bg-slate-900 text-white">
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                            {/* Quick toggle shortcuts */}
+                            {t.status === "pending" && (
+                              <button
+                                onClick={() => handleStatusChange(t.id, "completed")}
+                                title="Mark completed"
+                                className="rounded-full p-1 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {t.status === "completed" && (
+                              <button
+                                onClick={() => handleStatusChange(t.id, "refunded")}
+                                title="Mark refunded"
+                                className="rounded-full p-1 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              >
+                                <Undo2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {t.status === "refunded" && (
+                              <button
+                                onClick={() => handleStatusChange(t.id, "pending")}
+                                title="Reset to pending"
+                                className="rounded-full p-1 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -322,22 +385,32 @@ export default function OrdersPage() {
                         })}
                       </td>
 
-                      {/* Expand toggle */}
+                      {/* Expand toggle + delete */}
                       <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedId(isExpanded ? null : t.id)
-                          }
-                          className="rounded-lg p-1 text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
-                          title={isExpanded ? "Hide details" : "Show details"}
-                        >
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : t.id)
+                            }
+                            className="rounded-lg p-1 text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+                            title={isExpanded ? "Hide details" : "Show details"}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(t)}
+                            className="rounded-lg p-1 text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Delete order"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
 
@@ -398,6 +471,18 @@ export default function OrdersPage() {
           </table>
         </div>
       )}
+
+      {/* ── Delete confirmation modal ── */}
+      <ConfirmModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Order"
+        message={`Are you sure you want to permanently delete order #${deleteTarget?.transaction_id}? This action cannot be undone.`}
+        confirmLabel={deletingId ? "Deleting..." : "Delete Permanently"}
+        variant="danger"
+        loading={deletingId !== null}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ export interface Product {
   product_group_id: number;
   name: string;
   price: string;
+  original_price?: string | null;
   type: 'accounts' | 'currency' | 'items' | 'boosting' | 'gift-cards'; // Extensible types
   is_available: boolean;
   custom_form_code?: string | null;

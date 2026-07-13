@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { apiJson } from "../../lib/api";
 import type { Announcement } from "../../data/categories";
 import { Megaphone, Plus, Trash2 } from "lucide-react";
+import ConfirmModal from "../../components/ConfirmModal";
 
 export default function AnnouncementsPage() {
   const { token } = useAuth();
@@ -16,6 +17,9 @@ export default function AnnouncementsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchAnnouncements = () => {
     apiJson<Announcement[]>("/api/admin/announcements", token)
@@ -73,19 +77,25 @@ export default function AnnouncementsPage() {
         prev.map((x) => (x.id === a.id ? { ...x, status: newStatus } : x)),
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update status.");
+      setActionError(err instanceof Error ? err.message : "Failed to update status.");
+      setTimeout(() => setActionError(""), 3000);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this announcement?")) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiJson(`/api/admin/announcements/${id}`, token, {
+      await apiJson(`/api/admin/announcements/${deleteTarget.id}`, token, {
         method: "DELETE",
       });
-      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+      setAnnouncements((prev) => prev.filter((a) => a.id !== deleteTarget.id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete.");
+      setActionError(err instanceof Error ? err.message : "Failed to delete.");
+      setTimeout(() => setActionError(""), 3000);
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -165,6 +175,12 @@ export default function AnnouncementsPage() {
         </form>
       )}
 
+      {actionError && (
+        <div className="mb-4 rounded-lg border border-rose-500/20 bg-rose-500/5 px-4 py-2 text-sm text-rose-400">
+          {actionError}
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <p className="text-slate-400 text-sm">Loading announcements...</p>
@@ -212,7 +228,7 @@ export default function AnnouncementsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(a.id)}
+                  onClick={() => setDeleteTarget(a)}
                   className="rounded-lg border border-slate-700 px-2 py-1 text-slate-400 transition-colors hover:border-rose-500/50 hover:text-rose-400"
                   aria-label="Delete"
                 >
@@ -223,6 +239,18 @@ export default function AnnouncementsPage() {
           ))}
         </div>
       )}
+
+      {/* ── Delete confirmation modal ── */}
+      <ConfirmModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Announcement"
+        message={`Are you sure you want to permanently delete "${deleteTarget?.title}"? This action cannot be undone.`}
+        confirmLabel={deleting ? "Deleting..." : "Delete Permanently"}
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { apiJson } from "../lib/api";
 
 interface SiteSettings {
   siteName: string;
@@ -38,9 +39,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/settings");
-      if (!res.ok) throw new Error("Settings request failed");
-      const data = await res.json();
+      const data = await apiJson<{ site_name?: string; logo_url?: string | null }>(
+        "/api/settings",
+        null,
+      );
       const next: SiteSettings = {
         siteName: data.site_name || DEFAULTS.siteName,
         logoUrl: data.logo_url || null,

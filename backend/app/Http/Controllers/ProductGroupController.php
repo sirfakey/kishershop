@@ -2,99 +2,179 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request; 
+use Illuminate\Http\Request;
 use App\Models\Transaction;
 use App\Models\ProductGroup;
+use App\Models\Coupon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProductGroupController extends Controller
 {
     public function checkout(Request $request)
     {
-        // 1. Force strict data filtering and unique validation check
-        $validated = $request->validate([
-            'transaction_id'      => 'required|string|unique:transactions,transaction_id',
-            'product_name'        => 'required|string',
-            'product_id'          => 'nullable|exists:products,id',
-            'price'               => 'required|numeric|min:0',
-            'customer_email'      => 'nullable|email',
-            'account_credentials' => 'nullable|string',
-            'custom_fields'       => 'nullable|array',
-        ]);
+        try {
+            // 1. Force strict data filtering and unique validation check
+            $validated = $request->validate([
+                'transaction_id'      => 'required|string|unique:transactions,transaction_id',
+                'product_name'        => 'required|string',
+                'product_id'          => 'nullable|exists:products,id',
+                'price'               => 'required|numeric|min:0',
+                'customer_email'      => 'nullable|email',
+                'account_credentials' => 'nullable|string',
+                'custom_fields'       => 'nullable|array',
+                'points_to_redeem'    => 'nullable|integer|min:0',
+                'coupon_code'         => 'nullable|string',
+            ]);
 
-        $userId = null;
+            $userId = null;
+            $pointsEarned = 0;
+            $pointsRedeemed = 0;
+            $couponId = null;
+            $couponDiscount = 0;
+            $finalPrice = (float) $validated['price'];
 
-        // Detect authenticated customer via Sanctum
-        $user = auth('sanctum')->user();
-        if ($user) {
-            $userId = $user->id;
+            // Detect authenticated customer via Sanctum
+            $user = auth('sanctum')->user();
+            if ($user) {
+                $userId = $user->id;
+            }
+
+            // 2. Validate and apply coupon if provided
+            $couponCode = $validated['coupon_code'] ?? null;
+            if ($couponCode) {
+                $coupon = Coupon::where('code', $couponCode)->first();
+                if ($coupon && $coupon->isValidFor($finalPrice)) {
+                    $couponId = $coupon->id;
+                    $couponDiscount = (float) $coupon->calculateDiscount($finalPrice);
+                    $finalPrice = max(0, $finalPrice - $couponDiscount);
+                }
+            }
+
+            // 3. Process loyalty points (load fresh user points if redeeming)
+            if ($userId && isset($validated['points_to_redeem']) && $validated['points_to_redeem'] > 0) {
+                // Re-fetch user for fresh points value before deduction
+                $user = \App\Models\User::find($userId);
+                if (! $user) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Authenticated user not found.',
+                    ], 401);
+                }
+                $pointsToRedeem = (int) $validated['points_to_redeem'];
+                $pointsToRedeem = min($pointsToRedeem, (int) $user->points);
+                $pointsToRedeem = min($pointsToRedeem, (int) floor($finalPrice));
+
+                if ($pointsToRedeem > 0) {
+                    $pointsRedeemed = $pointsToRedeem;
+                    $finalPrice = max(0, $finalPrice - $pointsRedeemed);
+                }
+            }
+
+            // 4. Calculate points earned (1 point per 100 ৳ spent)
+            $pointsEarned = (int) floor($finalPrice / 100);
+
+            // 5. Atomic DB transaction: coupon increment + points deduction + transaction + points earning
+            DB::transaction(function () use (
+                $userId, $validated, $finalPrice, $couponCode, $couponId,
+                $couponDiscount, $pointsEarned, $pointsRedeemed
+            ) {
+                // Increment coupon usage atomically
+                if ($couponId) {
+                    Coupon::where('id', $couponId)->increment('used_count');
+                }
+
+                // Deduct points atomically
+                if ($userId && $pointsRedeemed > 0) {
+                    \App\Models\User::where('id', $userId)->decrement('points', $pointsRedeemed);
+                }
+
+                // Create the transaction
+                Transaction::create([
+                    'user_id'             => $userId,
+                    'transaction_id'      => $validated['transaction_id'],
+                    'product_name'        => $validated['product_name'],
+                    'product_id'          => $validated['product_id'] ?? null,
+                    'price'               => $finalPrice,
+                    'customer_email'      => $validated['customer_email'] ?? null,
+                    'account_credentials' => $validated['account_credentials'] ?? null,
+                    'custom_fields'       => $validated['custom_fields'] ?? null,
+                    'coupon_code'         => $couponCode,
+                    'coupon_id'           => $couponId,
+                    'coupon_discount'     => $couponDiscount,
+                    'points_earned'       => $pointsEarned,
+                    'points_redeemed'     => $pointsRedeemed,
+                    'status'              => 'pending',
+                ]);
+
+                // Grant earned points
+                if ($userId && $pointsEarned > 0) {
+                    \App\Models\User::where('id', $userId)->increment('points', $pointsEarned);
+                }
+            });
+
+            // 6. Fetch the created transaction for the response
+            $transaction = Transaction::where('transaction_id', $validated['transaction_id'])->first();
+
+            // 7. Return successful JSON response
+            return response()->json([
+                'success' => true,
+                'message' => 'Transaction verified and saved successfully!',
+                'data'    => $transaction,
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e; // Let Laravel handle validation errors normally (422)
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Checkout DB error: ' . $e->getMessage(), [
+                'transaction_id' => $request->input('transaction_id') ?? 'not-provided',
+                'trace'          => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'A database error occurred while processing your order. Please try again.',
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Checkout error: ' . $e->getMessage(), [
+                'transaction_id' => $request->input('transaction_id') ?? 'not-provided',
+                'trace'          => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'An unexpected error occurred. Please try again later.',
+            ], 500);
         }
-
-        // 2. Create the transaction
-        $transaction = Transaction::create([
-            'user_id'             => $userId,
-            'transaction_id'      => $validated['transaction_id'],
-            'product_name'        => $validated['product_name'],
-            'product_id'          => $validated['product_id'] ?? null,
-            'price'               => $validated['price'],
-            'customer_email'      => $validated['customer_email'] ?? null,
-            'account_credentials' => $validated['account_credentials'] ?? null,
-            'custom_fields'       => $validated['custom_fields'] ?? null,
-            'status'              => 'pending',
-        ]);
-
-        // 3. Return successful JSON response
-        return response()->json([
-            'success' => true,
-            'message' => 'Transaction verified and saved successfully!',
-            'data'    => $transaction,
-        ], 201);
     }
     public function index()
     {
-        // Fetch all product groups with their products so the frontend mega-menu
-        // can filter games to only those that carry a given product type.
-        $categories = ProductGroup::with(['products'])->get();
-
-        return response()->json($categories, 200);
+        try {
+            $categories = ProductGroup::with(['products'])->get();
+            return response()->json($categories, 200);
+        } catch (\Exception $e) {
+            Log::error('Category index error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to load categories. Please try again later.',
+            ], 500);
+        }
     }
+
     public function show($slug)
     {
-        // Find the category by its slug column, along with its associated products
-        // Eager-load the products so the storefront can render them
-        $category = ProductGroup::with(['products'])->where('slug', $slug)->first();
+        try {
+            $category = ProductGroup::with(['products'])->where('slug', $slug)->first();
 
-        // If the category doesn't exist, return a clean 404 JSON response instead of a 500 crash
-        if (!$category) {
+            if (! $category) {
+                return response()->json([
+                    'message' => 'Category not found',
+                ], 404);
+            }
+
+            return response()->json($category, 200);
+        } catch (\Exception $e) {
+            Log::error('Category show error: ' . $e->getMessage(), ['slug' => $slug]);
             return response()->json([
-                'message' => 'Category not found'
-            ], 404);
+                'message' => 'Failed to load category details.',
+            ], 500);
         }
-
-        return response()->json($category, 200);
     }
-    public function store(Request $request)
-{
-    // Validate that the name field arrived safely
-    $validated = $request->validate([
-        'transaction_id'      => 'required|string|unique:transactions,transaction_id',
-        'product_name'        => 'required|string',
-        'account_credentials' => 'required|string',
-        'amount'              => 'nullable|numeric|min:0',
-    ]);
-
-    // Create the transaction record directly
-    $transaction = Transaction::create([
-        'transaction_id'      => $validated['transaction_id'],
-        'product_name'        => $validated['product_name'],
-        'account_credentials' => $validated['account_credentials'],
-        'amount'              => $validated['amount'] ?? 0,
-        'status'              => 'pending',
-    ]);
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Transaction recorded successfully!',
-        'data' => $transaction
-    ], 201);
-}
 }

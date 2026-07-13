@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { Product } from "../data/categories";
 import { useCustomerAuth } from "../context/CustomerAuthContext";
+import { apiJson } from "../lib/api";
 
 // ── Template parser ────────────────────────────────────────────────
 
@@ -106,11 +107,80 @@ export default function CheckoutModal({
   onClose,
   onSuccess,
 }: CheckoutModalProps) {
-  const { user, refreshUser } = useCustomerAuth();
+  const { user, token, refreshUser } = useCustomerAuth();
   const [trxId, setTrxId] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // ── Payment gateway ──
+  const [gateway, setGateway] = useState<"bkash" | "nagad">("bkash");
+  const [copied, setCopied] = useState(false);
+  const paymentNumber = "01644417803";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(paymentNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback for older browsers
+      const ta = document.createElement("textarea");
+      ta.value = paymentNumber;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // ── Coupon state ──
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+
+  const handleApplyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError("");
+    try {
+      const data = await apiJson<{ valid: boolean; discount?: number; message?: string }>(
+        "/api/coupon/validate",
+        null,
+        {
+          method: "POST",
+          body: JSON.stringify({ code, product_price: productPrice }),
+        },
+      );
+      if (!data.valid) {
+        setCouponError(data.message || "Invalid coupon code.");
+        setCouponDiscount(0);
+        setAppliedCoupon("");
+      } else {
+        setCouponDiscount(data.discount || 0);
+        setAppliedCoupon(code);
+        setCouponError("");
+      }
+    } catch {
+      setCouponError("Failed to validate coupon.");
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode("");
+    setCouponDiscount(0);
+    setAppliedCoupon("");
+    setCouponError("");
+  };
 
   // ── Points redemption state ──
   const [redeemPoints, setRedeemPoints] = useState(false);
@@ -119,8 +189,8 @@ export default function CheckoutModal({
   const maxRedeemable = user
     ? Math.min(user.points, Math.floor(productPrice))
     : 0;
-  const discount = redeemPoints ? pointsToRedeem : 0;
-  const finalPrice = Math.max(0, productPrice - discount);
+  const pointsDiscount = redeemPoints ? pointsToRedeem : 0;
+  const finalPrice = Math.max(0, productPrice - pointsDiscount - couponDiscount);
 
   // ── Parse the product's custom form code ──
   const parsedFields: ParsedField[] = useMemo(() => {
@@ -200,7 +270,7 @@ export default function CheckoutModal({
       transaction_id: trxId,
       product_name: product.name,
       product_id: product.id,
-      price: finalPrice,
+      price: productPrice, // original price — backend handles discounts
       customer_email: email,
     };
 
@@ -209,36 +279,19 @@ export default function CheckoutModal({
       payload.points_to_redeem = pointsToRedeem;
     }
 
+    // Attach applied coupon
+    if (appliedCoupon) {
+      payload.coupon_code = appliedCoupon;
+    }
+
     setSubmitting(true);
     setError("");
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiUrl}/api/checkout`, {
+      await apiJson("/api/checkout", token, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      const responseText = await response.text();
-      let data;
-
-      try {
-        data = JSON.parse(responseText);
-      } catch (jsonErr) {
-        const CustomError = Error as new (
-          message?: string,
-          options?: { cause?: unknown },
-        ) => Error;
-        throw new CustomError(
-          `Server returned an invalid response (Status ${response.status}). Check your Laravel log or route path.`,
-          { cause: jsonErr },
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to process transaction.");
-      }
 
       onSuccess();
       // Refresh user points after successful checkout
@@ -403,16 +456,24 @@ export default function CheckoutModal({
                   )}
 
                   {/* Discount summary */}
-                  {redeemPoints && discount > 0 && (
+                  {(redeemPoints || couponDiscount > 0) && (pointsDiscount > 0 || couponDiscount > 0) && (
                     <div className="rounded-lg bg-slate-950/50 p-3 space-y-1 text-sm">
                       <div className="flex justify-between text-slate-400">
                         <span>Subtotal</span>
                         <span>৳{productPrice.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between text-amber-400">
-                        <span>Points discount</span>
-                        <span>-৳{discount.toLocaleString()}</span>
-                      </div>
+                      {pointsDiscount > 0 && (
+                        <div className="flex justify-between text-amber-400">
+                          <span>Points discount</span>
+                          <span>-৳{pointsDiscount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {couponDiscount > 0 && (
+                        <div className="flex justify-between text-purple-400">
+                          <span>Coupon: {appliedCoupon}</span>
+                          <span>-৳{couponDiscount.toLocaleString()}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-bold text-white border-t border-slate-800 pt-1">
                         <span>You pay</span>
                         <span className="text-emerald-400">
@@ -499,16 +560,140 @@ export default function CheckoutModal({
             />
           </div>
 
-          {/* Payment Guide */}
-          <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
-            <span className="text-xs font-bold text-amber-400">
-              Payment Guide:
-            </span>
-            <p className="text-xs text-slate-400 mt-1">
-              Send money via bKash to personal number{" "}
-              <span className="font-mono font-bold text-amber-400">01978453300</span>{" "}
-              and input the Transaction ID below.
+          {/* ── Coupon Code ── */}
+          <div className="rounded-xl border border-purple-500/20 bg-purple-600/5 p-4 space-y-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-purple-400">
+              🎟️ Coupon Code
             </p>
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between rounded-lg bg-slate-950/50 px-3 py-2">
+                <span className="text-sm font-semibold text-purple-400">{appliedCoupon}</span>
+                <button
+                  type="button"
+                  onClick={handleRemoveCoupon}
+                  className="text-xs text-slate-500 hover:text-rose-400 transition-colors"
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Enter coupon code"
+                  className="flex-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-purple-500 placeholder:text-slate-600"
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleApplyCoupon())}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={couponLoading || !couponCode.trim()}
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+                >
+                  {couponLoading ? "..." : "Apply"}
+                </button>
+              </div>
+            )}
+            {couponError && (
+              <p className="text-xs text-rose-400">{couponError}</p>
+            )}
+          </div>
+
+          {/* ── Payment Gateway Selector ── */}
+          <div className="rounded-xl bg-slate-950 p-4 border border-slate-800 space-y-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Select Payment Method
+            </p>
+
+            {/* Gateway grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setGateway("bkash")}
+                className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all ${
+                  gateway === "bkash"
+                    ? "border-rose-500 bg-rose-500/10 ring-1 ring-rose-500/50"
+                    : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                }`}
+              >
+                <img
+                  src="https://download.logo.wine/logo/bKash/bKash-Icon2.png"
+                  alt="bKash"
+                  className="h-10 w-10 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                <span className={`text-xs font-bold ${gateway === "bkash" ? "text-rose-400" : "text-slate-400"}`}>
+                  bKash
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGateway("nagad")}
+                className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition-all ${
+                  gateway === "nagad"
+                    ? "border-rose-500 bg-rose-500/10 ring-1 ring-rose-500/50"
+                    : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+                }`}
+              >
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Nagad-Logo.png/320px-Nagad-Logo.png"
+                  alt="Nagad"
+                  className="h-10 w-10 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                <span className={`text-xs font-bold ${gateway === "nagad" ? "text-rose-400" : "text-slate-400"}`}>
+                  Nagad
+                </span>
+              </button>
+            </div>
+
+            {/* Account number with copy button */}
+            <div>
+              <p className="text-xs text-slate-400 mb-1.5">
+                Personal {gateway === "bkash" ? "bKash" : "Nagad"} Number
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm font-mono font-bold text-amber-400 select-all">
+                  {paymentNumber}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="shrink-0 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic instructions */}
+            <div className="rounded-lg bg-slate-900/50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                Instructions
+              </p>
+              {gateway === "bkash" ? (
+                <ol className="space-y-1 text-xs text-slate-400 list-decimal list-inside">
+                  <li>Open bKash app</li>
+                  <li>Send Money</li>
+                  <li>Enter the number above</li>
+                  <li>Input the Transaction ID below</li>
+                </ol>
+              ) : (
+                <ol className="space-y-1 text-xs text-slate-400 list-decimal list-inside">
+                  <li>Open Nagad app</li>
+                  <li>Send Money</li>
+                  <li>Enter the number above</li>
+                  <li>Input the Transaction ID below</li>
+                </ol>
+              )}
+            </div>
           </div>
 
           {/* Transaction ID */}

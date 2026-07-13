@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import type { CustomerUser } from "../data/categories";
+import { apiJson } from "../lib/api";
 
 interface CustomerAuthContextValue {
   token: string | null;
@@ -43,14 +44,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    fetch(`/api/user`, {
-      headers: { Authorization: `Bearer ${stored}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Token invalid");
-        return res.json();
-      })
-      .then((data: CustomerUser) => {
+    apiJson<CustomerUser>("/api/user", stored)
+      .then((data) => {
         setToken(stored);
         setUser(data);
         localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data));
@@ -72,24 +67,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch(`/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      let message = `Login failed (${response.status})`;
-      try {
-        const err = await response.json();
-        if (err.message) message = err.message;
-      } catch {
-        // stick with status-based message
-      }
-      throw new Error(message);
-    }
-
-    const data = await response.json();
+    const data = await apiJson<{ message: string; token: string; user: CustomerUser }>(
+      "/api/login",
+      null,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
 
     if (!data.token || !data.user) {
       throw new Error("Login failed: incomplete response from server.");
@@ -100,30 +85,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<string> => {
-      const response = await fetch(`/api/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
+      const data = await apiJson<{ message: string; email: string }>(
+        "/api/register",
+        null,
+        {
+          method: "POST",
+          body: JSON.stringify({ name, email, password }),
+        },
+      );
 
-      if (!response.ok) {
-        let message = `Registration failed (${response.status})`;
-        try {
-          const err = await response.json();
-          if (err.message) message = err.message;
-          if (err.errors) {
-            const msgs = Object.values(err.errors).flat().join("; ");
-            if (msgs) message = msgs;
-          }
-        } catch {
-          // stick with status-based message
-        }
-        throw new Error(message);
-      }
-
-      const data = await response.json();
-
-      // Registration no longer returns a token — user must verify email first
       if (!data.email) {
         throw new Error("Registration failed: incomplete response from server.");
       }
@@ -134,28 +104,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const verifyEmail = useCallback(async (email: string, code: string) => {
-    const response = await fetch(`/api/verify-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code }),
-    });
-
-    if (!response.ok) {
-      let message = `Verification failed (${response.status})`;
-      try {
-        const err = await response.json();
-        if (err.message) message = err.message;
-        if (err.errors) {
-          const msgs = Object.values(err.errors).flat().join("; ");
-          if (msgs) message = msgs;
-        }
-      } catch {
-        // stick with status-based message
-      }
-      throw new Error(message);
-    }
-
-    const data = await response.json();
+    const data = await apiJson<{ message: string; token: string; user: CustomerUser }>(
+      "/api/verify-email",
+      null,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
+      },
+    );
 
     if (!data.token || !data.user) {
       throw new Error("Verification failed: incomplete response from server.");
@@ -167,10 +123,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     try {
       if (token) {
-        await fetch(`/api/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await apiJson("/api/logout", token, { method: "POST" });
       }
     } catch {
       // Even if the request fails, clear local state
@@ -184,14 +137,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     if (!token) return;
     try {
-      const response = await fetch(`/api/user`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data: CustomerUser = await response.json();
-        setUser(data);
-        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data));
-      }
+      const data = await apiJson<CustomerUser>("/api/user", token);
+      setUser(data);
+      localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data));
     } catch {
       // Silently fail — user state stays as-is
     }

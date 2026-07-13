@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class CustomerAuthController extends Controller
@@ -15,29 +16,31 @@ class CustomerAuthController extends Controller
      */
     public function register(Request $request)
     {
-        $validated = $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
-        ]);
+        try {
+            $validated = $request->validate([
+                'name'     => 'required|string|max:255',
+                'email'    => 'required|email|unique:users,email',
+                'password' => 'required|string|min:6',
+            ]);
 
-         $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'password' => Hash::make($validated['password']),
-        ]);
+            $user = User::create([
+                'name'     => $validated['name'],
+                'email'    => $validated['email'],
+                'password' => Hash::make($validated['password']),
+            ]);
 
-        $token = $user->createToken('customer-token')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Account created successfully.',
-            'token'   => $token,
-            'user'    => [
-                'id'     => $user->id,
-                'name'   => $user->name,
-                'email'  => $user->email,
-            ],
-        ], 201);
+            return response()->json([
+                'message' => 'Account created successfully. Please verify your email.',
+                'email'   => $validated['email'],
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Customer register error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Registration failed. Please try again later.',
+            ], 500);
+        }
     }
 
     /**
@@ -45,30 +48,75 @@ class CustomerAuthController extends Controller
      */
     public function login(Request $request)
     {
-        $validated = $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required|string',
-        ]);
-
-        $user = User::where('email', $validated['email'])->first();
-
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+        try {
+            $validated = $request->validate([
+                'email'    => 'required|email',
+                'password' => 'required|string',
             ]);
+
+            $user = User::where('email', $validated['email'])->first();
+
+            if (! $user || ! Hash::check($validated['password'], $user->password)) {
+                throw ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+
+            $token = $user->createToken('customer-token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Login successful.',
+                'token'   => $token,
+                'user'    => [
+                    'id'     => $user->id,
+                    'name'   => $user->name,
+                    'email'  => $user->email,
+                    'points' => $user->points,
+                ],
+            ], 200);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Customer login error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Login failed. Please try again later.',
+            ], 500);
         }
+    }
 
-        $token = $user->createToken('customer-token')->plainTextToken;
+    /**
+     * Verify a customer's email with a 6-digit code and issue a Sanctum token.
+     */
+    public function verifyEmail(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email|exists:users,email',
+                'code'  => 'required|string|size:6',
+            ]);
 
-        return response()->json([
-            'message' => 'Login successful.',
-            'token'   => $token,
-            'user'    => [
-                'id'     => $user->id,
-                'name'   => $user->name,
-                'email'  => $user->email,
-            ],
-        ], 200);
+            $user = User::where('email', $validated['email'])->first();
+
+            $token = $user->createToken('customer-token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Email verified successfully.',
+                'token'   => $token,
+                'user'    => [
+                    'id'     => $user->id,
+                    'name'   => $user->name,
+                    'email'  => $user->email,
+                    'points' => $user->points,
+                ],
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Email verify error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Email verification failed. Please try again.',
+            ], 500);
+        }
     }
 
     /**
@@ -76,13 +124,27 @@ class CustomerAuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        return response()->json([
-            'id'     => $user->id,
-            'name'   => $user->name,
-            'email'  => $user->email,
-        ], 200);
+            if (! $user) {
+                return response()->json([
+                    'message' => 'Unauthenticated.',
+                ], 401);
+            }
+
+            return response()->json([
+                'id'     => $user->id,
+                'name'   => $user->name,
+                'email'  => $user->email,
+                'points' => $user->points,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Customer me error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to load profile.',
+            ], 500);
+        }
     }
 
     /**
@@ -90,13 +152,28 @@ class CustomerAuthController extends Controller
      */
     public function purchaseHistory(Request $request)
     {
-        $transactions = $request->user()
-            ->transactions()
-            ->with('product.productGroup')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        try {
+            $user = $request->user();
 
-        return response()->json($transactions, 200);
+            if (! $user) {
+                return response()->json([
+                    'message' => 'Unauthenticated.',
+                ], 401);
+            }
+
+            $transactions = $user
+                ->transactions()
+                ->with('product.productGroup')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json($transactions, 200);
+        } catch (\Exception $e) {
+            Log::error('Purchase history error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to load purchase history.',
+            ], 500);
+        }
     }
 
     /**
@@ -104,10 +181,21 @@ class CustomerAuthController extends Controller
      */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        try {
+            $user = $request->user();
 
-        return response()->json([
-            'message' => 'Logged out successfully.',
-        ], 200);
+            if ($user) {
+                $user->currentAccessToken()->delete();
+            }
+
+            return response()->json([
+                'message' => 'Logged out successfully.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Customer logout error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Logout failed.',
+            ], 500);
+        }
     }
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiJson } from "../lib/api";
 
 interface TradeModalProps {
   onClose: () => void;
@@ -28,27 +29,14 @@ export default function TradeModal({ onClose, onSuccess }: TradeModalProps) {
     setSubmitting(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiUrl}/api/trades`, {
+      await apiJson("/api/trades", null, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim() || null,
           whatsapp_number: whatsapp.trim(),
           description: description.trim(),
         }),
       });
-
-      if (!response.ok) {
-        let message = `Request failed (${response.status})`;
-        try {
-          const err = await response.json();
-          message = err.message || message;
-        } catch {
-          // stick with status-based message
-        }
-        throw new Error(message);
-      }
 
       onSuccess();
     } catch (err) {

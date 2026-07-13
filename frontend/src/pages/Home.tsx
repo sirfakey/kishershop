@@ -1,23 +1,21 @@
 import { useEffect, useState } from "react";
 import GroupCard from "../components/GroupCard";
 import { ProductGroup } from "../data/categories";
+import { apiJson } from "../lib/api";
 
 export default function Home() {
   const [categories, setCategories] = useState<ProductGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      fetch(`${apiUrl}/api/categories`)
-        .then((res) => res.json())
+      apiJson<ProductGroup[]>("/api/categories", null)
         .then((data) => {
-          setCategories(data);
-          setLoading(false);
+          setCategories(Array.isArray(data) ? data : []);
         })
         .catch((err) => {
           console.error("Error communicating with database API:", err);
-          setLoading(false);
-        });
+        })
+        .finally(() => setLoading(false));
     }, []);
 
   if (loading) {

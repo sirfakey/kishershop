@@ -8,6 +8,7 @@ use App\Http\Controllers\SettingController;
 use App\Http\Controllers\TradeController;
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\ImageUploadController;
+use App\Http\Controllers\CouponController;
 use Illuminate\Support\Facades\Route;
 
 // ─── Public Storefront Routes ────────────────────────────────────────
@@ -18,9 +19,13 @@ Route::get('/settings', [SettingController::class, 'index']);
 Route::get('/notifications', [AnnouncementController::class, 'active']);
 Route::post('/trades', [TradeController::class, 'store']);
 
+// ─── Coupon Validation (public) ───────────────────────────────────────
+Route::post('/coupon/validate', [CouponController::class, 'validateCoupon']);
+
 // ─── Customer Auth Routes (public) ──────────────────────────────────
 Route::post('/register', [CustomerAuthController::class, 'register']);
 Route::post('/login', [CustomerAuthController::class, 'login']);
+Route::post('/verify-email', [CustomerAuthController::class, 'verifyEmail']);
 // ─── Protected Customer Routes ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [CustomerAuthController::class, 'me']);
@@ -40,12 +45,14 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::get('/transactions/export', [AdminController::class, 'exportTransactionsCsv']);
     Route::patch('/transactions/{id}/fulfill', [AdminController::class, 'fulfillTransaction']);
     Route::put('/transactions/{id}/status', [AdminController::class, 'updateTransactionStatus']);
+    Route::delete('/transactions/{id}', [AdminController::class, 'deleteTransaction']);
     Route::get('/products', [AdminController::class, 'listProducts']);
     Route::post('/products', [AdminController::class, 'storeProduct']);
     Route::put('/products/{id}', [AdminController::class, 'updateProduct']);
     Route::delete('/products/{id}', [AdminController::class, 'deleteProduct']);
     Route::get('/product-groups', [AdminController::class, 'listProductGroups']);
     Route::post('/product-groups', [AdminController::class, 'storeProductGroup']);
+    Route::put('/product-groups/{id}', [AdminController::class, 'updateProductGroup']);
     Route::delete('/product-groups/{id}', [AdminController::class, 'deleteProductGroup']);
     Route::get('/trades', [AdminController::class, 'listTrades']);
     Route::patch('/trades/{id}/status', [AdminController::class, 'updateTradeStatus']);
@@ -55,4 +62,10 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::delete('/announcements/{id}', [AdminController::class, 'deleteAnnouncement']);
     Route::post('/upload', [ImageUploadController::class, 'upload']);
 
+    // ─── Coupon Management ───────────────────────────────────────────
+    Route::get('/coupons', [CouponController::class, 'index']);
+    Route::get('/coupons/export', [CouponController::class, 'export']);
+    Route::post('/coupons', [CouponController::class, 'store']);
+    Route::put('/coupons/{id}', [CouponController::class, 'update']);
+    Route::delete('/coupons/{id}', [CouponController::class, 'destroy']);
 });

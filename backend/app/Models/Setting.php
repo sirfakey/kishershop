@@ -58,7 +58,7 @@ class Setting extends Model
         $rows = static::whereIn('key', self::PUBLIC_KEYS)->pluck('value', 'key');
 
         return [
-            'site_name' => $rows->get('site_name', 'KisherShop'),
+            'site_name' => $rows->get('site_name', 'Kisher.Shop'),
             'logo_url'  => $rows->get('logo_url'),
         ];
     }

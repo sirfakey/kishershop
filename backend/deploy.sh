@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# KisherShop — Hostinger (cPanel) Deployment Script
+# Kisher.Shop — Hostinger (cPanel) Deployment Script
 # -----------------------------------------------------------------------------
 # Run this on the server after pushing new code, or set it as a post-receive
 # Git hook for automated deployments.

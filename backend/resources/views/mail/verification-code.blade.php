@@ -95,7 +95,7 @@
         <h1>Verify Your Email</h1>
         <p class="subtitle">
             Hello {{ $userName }},<br>
-            Use the code below to verify your KisherShop account.
+            Use the code below to verify your Kisher.Shop account.
         </p>
 
         <div class="code-box">
@@ -104,11 +104,11 @@
 
         <p class="info">
             This code expires in <strong>10 minutes</strong>.<br>
-            If you did not create a KisherShop account, you can safely ignore this email.
+            If you did not create a Kisher.Shop account, you can safely ignore this email.
         </p>
 
         <div class="footer">
-            <p>&copy; {{ date('Y') }} KisherShop. All rights reserved.</p>
+            <p>&copy; {{ date('Y') }} Kisher.Shop. All rights reserved.</p>
         </div>
     </div>
 </body>

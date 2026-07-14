@@ -8,6 +8,7 @@ import ConfirmModal from "../../components/ConfirmModal";
 interface Category {
   id: number;
   name: string;
+  classification?: string | null;
   slug: string;
   image_url: string;
   sku_prefix?: string | null;
@@ -32,6 +33,7 @@ export default function CategoriesPage() {
   const [slugEdited, setSlugEdited] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [skuPrefix, setSkuPrefix] = useState("");
+  const [classification, setClassification] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -49,6 +51,7 @@ export default function CategoriesPage() {
   const [editSlug, setEditSlug] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editSkuPrefix, setEditSkuPrefix] = useState("");
+  const [editClassification, setEditClassification] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -89,6 +92,7 @@ export default function CategoriesPage() {
           method: "POST",
           body: JSON.stringify({
             name,
+            classification: classification.trim() || undefined,
             slug: slug || undefined,
             image_url: imageUrl || undefined,
             sku_prefix: skuPrefix.trim() || undefined,
@@ -98,6 +102,7 @@ export default function CategoriesPage() {
 
       setFormSuccess(data.message || "Category created!");
       setName("");
+      setClassification("");
       setSlug("");
       setImageUrl("");
       setSkuPrefix("");
@@ -131,6 +136,7 @@ export default function CategoriesPage() {
   const openEditModal = (c: Category) => {
     setEditingCategory(c);
     setEditName(c.name);
+    setEditClassification(c.classification ?? "");
     setEditSlug(c.slug);
     setEditImageUrl(c.image_url);
     setEditSkuPrefix(c.sku_prefix ?? "");
@@ -150,6 +156,7 @@ export default function CategoriesPage() {
           method: "PUT",
           body: JSON.stringify({
             name: editName,
+            classification: editClassification.trim() || undefined,
             slug: editSlug || undefined,
             image_url: editImageUrl || undefined,
             sku_prefix: editSkuPrefix.trim() || undefined,
@@ -160,7 +167,7 @@ export default function CategoriesPage() {
       setCategories((prev) =>
         prev.map((c) =>
           c.id === editingCategory.id
-            ? { ...c, name: editName, slug: editSlug, image_url: editImageUrl, sku_prefix: editSkuPrefix.trim() || null }
+            ? { ...c, name: editName, classification: editClassification.trim() || null, slug: editSlug, image_url: editImageUrl, sku_prefix: editSkuPrefix.trim() || null }
             : c,
         ),
       );
@@ -206,6 +213,19 @@ export default function CategoriesPage() {
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="e.g. Minecraft"
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Tag Classification <span className="text-slate-600 normal-case font-normal">(e.g. Game, Software)</span>
+              </label>
+              <input
+                type="text"
+                value={classification}
+                onChange={(e) => setClassification(e.target.value)}
+                placeholder="e.g. Game"
                 className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
               />
             </div>
@@ -383,6 +403,19 @@ export default function CategoriesPage() {
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Tag Classification <span className="text-slate-600 normal-case font-normal">(e.g. Game, Software)</span>
+                </label>
+                <input
+                  type="text"
+                  value={editClassification}
+                  onChange={(e) => setEditClassification(e.target.value)}
+                  placeholder="e.g. Game"
                   className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
                 />
               </div>

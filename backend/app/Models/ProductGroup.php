@@ -13,7 +13,7 @@ class ProductGroup extends Model
     // Mass assignment protection bypass so create() works for new categories
     protected $guarded = [];
 
-    protected $fillable = ['name', 'slug', 'image_url', 'sku_prefix'];
+    protected $fillable = ['name', 'classification', 'slug', 'image_url', 'sku_prefix'];
 
     /**
      * Get the products associated with this category group.

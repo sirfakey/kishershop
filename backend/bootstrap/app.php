@@ -12,6 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Register Sanctum's abilities middleware alias
+        $middleware->alias([
+            'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
+        ]);
+
         // Security hardening headers (HSTS, X-Frame-Options, etc.)
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 

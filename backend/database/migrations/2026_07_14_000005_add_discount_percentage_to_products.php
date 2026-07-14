@@ -9,14 +9,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->decimal('original_price', 10, 2)->nullable()->after('price');
+            $table->unsignedTinyInteger('discount_percentage')->nullable()->after('original_price')->comment('Direct discount % (0-99), shown as badge on storefront');
         });
     }
 
     public function down(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn('original_price');
+            $table->dropColumn('discount_percentage');
         });
     }
 };

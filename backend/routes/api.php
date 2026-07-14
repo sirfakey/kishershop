@@ -30,6 +30,7 @@ Route::post('/verify-email', [CustomerAuthController::class, 'verifyEmail']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [CustomerAuthController::class, 'me']);
     Route::get('/user/transactions', [CustomerAuthController::class, 'purchaseHistory']);
+    Route::get('/user/trades', [CustomerAuthController::class, 'tradeHistory']);
     Route::post('/logout', [CustomerAuthController::class, 'logout']);
 });
 
@@ -37,7 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::post('/admin/login', [AdminAuthController::class, 'login']);
 
 // ─── Protected Admin Routes ─────────────────────────────────────────
-Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'abilities:admin'])->prefix('admin')->group(function () {
     Route::post('/logout', [AdminAuthController::class, 'logout']);
     Route::put('/settings', [SettingController::class, 'update']);
     Route::get('/stats', [AdminController::class, 'getStats']);
@@ -56,11 +57,19 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
     Route::delete('/product-groups/{id}', [AdminController::class, 'deleteProductGroup']);
     Route::get('/trades', [AdminController::class, 'listTrades']);
     Route::patch('/trades/{id}/status', [AdminController::class, 'updateTradeStatus']);
+    Route::delete('/trades/{id}', [AdminController::class, 'deleteTrade']);
     Route::get('/announcements', [AdminController::class, 'listAnnouncements']);
     Route::post('/announcements', [AdminController::class, 'storeAnnouncement']);
     Route::put('/announcements/{id}', [AdminController::class, 'updateAnnouncement']);
     Route::delete('/announcements/{id}', [AdminController::class, 'deleteAnnouncement']);
     Route::post('/upload', [ImageUploadController::class, 'upload']);
+
+    // ─── Account Security & Fraud Radar ─────────────────────────────────
+    Route::get('/users', [AdminController::class, 'listUsers']);
+    Route::post('/users/{id}/ban', [AdminController::class, 'banUser']);
+    Route::post('/users/{id}/unban', [AdminController::class, 'unbanUser']);
+    Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
+    Route::patch('/users/{id}/points', [AdminController::class, 'updateUserPoints']);
 
     // ─── Coupon Management ───────────────────────────────────────────
     Route::get('/coupons', [CouponController::class, 'index']);

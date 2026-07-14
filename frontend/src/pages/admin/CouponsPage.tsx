@@ -56,6 +56,10 @@ export default function CouponsPage() {
   // ── Multi-select compare state ──
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
+  // Sort state (for comparison table)
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+
   const fetchCoupons = () => {
     apiJson<Coupon[]>("/api/admin/coupons", token)
       .then(setCoupons)
@@ -184,7 +188,7 @@ export default function CouponsPage() {
       await apiDownload(
         "/api/admin/coupons/export",
         token,
-        `kishershop_coupons_${new Date().toISOString().slice(0, 10)}.csv`,
+        `kisher-shop_coupons_${new Date().toISOString().slice(0, 10)}.csv`,
       );
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Export failed");
@@ -197,6 +201,55 @@ export default function CouponsPage() {
     () => coupons.filter((c) => selectedIds.has(c.id)),
     [coupons, selectedIds],
   );
+
+  // ── Sorting for comparison table ──
+  const handleSort = (column: string) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+    } else if (sortDirection === "asc") {
+      setSortDirection("desc");
+    } else if (sortDirection === "desc") {
+      setSortColumn(null);
+      setSortDirection(null);
+    }
+  };
+
+  const sortedSelectedCoupons = useMemo(() => {
+    if (!sortColumn || !sortDirection) return selectedCoupons;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...selectedCoupons].sort((a, b) => {
+      let valA: string | number = "";
+      let valB: string | number = "";
+      switch (sortColumn) {
+        case "code":
+          valA = a.code.toLowerCase();
+          valB = b.code.toLowerCase();
+          break;
+        case "discount":
+          valA = a.discount_value;
+          valB = b.discount_value;
+          break;
+        case "used":
+          valA = a.used_count;
+          valB = b.used_count;
+          break;
+        case "status":
+          valA = a.is_active ? "active" : "inactive";
+          valB = b.is_active ? "active" : "inactive";
+          break;
+        case "created":
+          valA = new Date(a.created_at).getTime();
+          valB = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+  }, [selectedCoupons, sortColumn, sortDirection]);
 
   // ── Usage % ──
   const usagePct = (c: Coupon): number => {
@@ -549,25 +602,35 @@ export default function CouponsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800">
-                  <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Code
-                  </th>
-                  <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Discount
-                  </th>
-                  <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Used
-                  </th>
-                  <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Status
-                  </th>
-                  <th className="text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Created
-                  </th>
+                  {([
+                    ["code", "Code"],
+                    ["discount", "Discount"],
+                    ["used", "Used"],
+                    ["status", "Status"],
+                    ["created", "Created"],
+                  ] as const).map(([key, label]) => {
+                    const isActive = sortColumn === key;
+                    const arrow =
+                      !isActive ? "↕" : sortDirection === "asc" ? "▲" : "▼";
+                    return (
+                      <th
+                        key={key}
+                        onClick={() => handleSort(key)}
+                        className={`text-left px-3 py-2 text-xs font-bold uppercase tracking-wider cursor-pointer select-none hover:bg-slate-800/50 transition-colors ${
+                          isActive ? "text-indigo-400" : "text-slate-400"
+                        }`}
+                      >
+                        {label}{" "}
+                        <span className={isActive ? "text-indigo-400" : "text-slate-600"}>
+                          {arrow}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {selectedCoupons.map((c) => (
+                {sortedSelectedCoupons.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-800/30">
                     <td className="px-3 py-2.5 font-mono text-xs font-bold text-amber-400">
                       {c.code}

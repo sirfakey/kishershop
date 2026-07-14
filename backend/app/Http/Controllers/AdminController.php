@@ -7,8 +7,11 @@ use App\Models\Transaction;
 use App\Models\Product;
 use App\Models\Trade;
 use App\Models\Announcement;
+use App\Models\User;
+use App\Mail\TradeStatusNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminController extends Controller
@@ -55,8 +58,17 @@ class AdminController extends Controller
     {
         try {
             $transaction = Transaction::findOrFail($id);
+
+            $oldStatus = $transaction->status;
             $transaction->status = 'completed';
             $transaction->save();
+
+            // Grant earned points only if transitioning from non-completed to completed
+            $userId = $transaction->user_id;
+            $pointsEarned = (int) $transaction->points_earned;
+            if ($oldStatus !== 'completed' && $userId && $pointsEarned > 0) {
+                \App\Models\User::where('id', $userId)->increment('points', $pointsEarned);
+            }
 
             return response()->json([
                 'message'     => 'Order marked as completed successfully!',
@@ -84,8 +96,32 @@ class AdminController extends Controller
                 'status' => 'required|in:pending,completed,refunded',
             ]);
 
-            $transaction->status = $validated['status'];
+            $oldStatus = $transaction->status;
+            $newStatus = $validated['status'];
+            $transaction->status = $newStatus;
             $transaction->save();
+
+            // Handle points based on status transition
+            $userId = $transaction->user_id;
+            $pointsEarned = (int) $transaction->points_earned;
+            $pointsRedeemed = (int) $transaction->points_redeemed;
+
+            if ($oldStatus !== 'completed' && $newStatus === 'completed') {
+                // Order just fulfilled — grant earned points
+                if ($userId && $pointsEarned > 0) {
+                    \App\Models\User::where('id', $userId)->increment('points', $pointsEarned);
+                }
+            } elseif ($oldStatus === 'completed' && $newStatus !== 'completed') {
+                // Order un-fulfilled (refunded or back to pending) — reverse points
+                if ($userId) {
+                    if ($pointsEarned > 0) {
+                        \App\Models\User::where('id', $userId)->decrement('points', $pointsEarned);
+                    }
+                    if ($pointsRedeemed > 0) {
+                        \App\Models\User::where('id', $userId)->increment('points', $pointsRedeemed);
+                    }
+                }
+            }
 
             return response()->json([
                 'message'     => 'Order status updated successfully!',
@@ -110,15 +146,25 @@ class AdminController extends Controller
     {
         try {
             $validated = $request->validate([
-                'name'             => 'required|string|max:255',
-                'price'            => 'required|numeric|min:0',
-                'original_price'   => 'nullable|numeric|min:0',
-                'product_group_id' => 'required|exists:product_groups,id',
-                'type'             => 'required|string',
-                'custom_form_code' => 'nullable|string',
-                'sku'              => 'nullable|string|unique:products,sku',
-                'image_url'        => 'nullable|string|max:2048',
+                'name'                => 'required|string|max:255',
+                'description'         => 'nullable|string',
+                'price'               => 'required|numeric|min:0',
+                'original_price'      => 'nullable|numeric|min:0',
+                'discount_percentage' => 'nullable|integer|min:1|max:99',
+                'product_group_id'    => 'required|exists:product_groups,id',
+                'type'                => 'required|string',
+                'custom_form_code'    => 'nullable|string',
+                'sku'                 => 'nullable|string|unique:products,sku',
+                'image_url'           => 'nullable|string|max:2048',
             ]);
+
+            // Section 2: original_price must be > price when provided
+            if (!empty($validated['original_price']) && $validated['original_price'] <= $validated['price']) {
+                return response()->json([
+                    'message' => 'The original price must be greater than the active sale price.',
+                    'errors'  => ['original_price' => ['Original price must be greater than the current sale price.']],
+                ], 422);
+            }
 
             $product = Product::create($validated);
 
@@ -140,7 +186,7 @@ class AdminController extends Controller
     public function exportTransactionsCsv(): StreamedResponse
     {
         try {
-            $fileName = 'kishershop_sales_' . date('Y-m-d') . '.csv';
+            $fileName = 'kisher-shop_sales_' . date('Y-m-d') . '.csv';
             $transactions = Transaction::orderBy('created_at', 'desc')->get();
 
             $headers = [
@@ -206,15 +252,27 @@ class AdminController extends Controller
             $product = Product::findOrFail($id);
 
             $validated = $request->validate([
-                'name'             => 'sometimes|required|string|max:255',
-                'price'            => 'sometimes|required|numeric|min:0',
-                'original_price'   => 'nullable|numeric|min:0',
-                'product_group_id' => 'sometimes|required|exists:product_groups,id',
-                'type'             => 'sometimes|required|string',
-                'custom_form_code' => 'nullable|string',
-                'sku'              => 'nullable|string|unique:products,sku,' . $id,
-                'image_url'        => 'nullable|string|max:2048',
+                'name'                => 'sometimes|required|string|max:255',
+                'description'         => 'nullable|string',
+                'price'               => 'sometimes|required|numeric|min:0',
+                'original_price'      => 'nullable|numeric|min:0',
+                'discount_percentage' => 'nullable|integer|min:1|max:99',
+                'product_group_id'    => 'sometimes|required|exists:product_groups,id',
+                'type'                => 'sometimes|required|string',
+                'custom_form_code'    => 'nullable|string',
+                'sku'                 => 'nullable|string|unique:products,sku,' . $id,
+                'image_url'           => 'nullable|string|max:2048',
             ]);
+
+            // Section 2: original_price must be > price when provided
+            $checkPrice = $validated['price'] ?? $product->price;
+            $checkOriginal = $validated['original_price'] ?? $product->original_price;
+            if (!empty($checkOriginal) && (float) $checkOriginal <= (float) $checkPrice) {
+                return response()->json([
+                    'message' => 'The original price must be greater than the active sale price.',
+                    'errors'  => ['original_price' => ['Original price must be greater than the current sale price.']],
+                ], 422);
+            }
 
             $product->update($validated);
 
@@ -280,10 +338,11 @@ class AdminController extends Controller
     {
         try {
             $validated = $request->validate([
-                'name'       => 'required|string|max:255',
-                'slug'       => 'nullable|string|max:255',
-                'image_url'  => 'nullable|string|max:2048',
-                'sku_prefix' => 'nullable|string|max:10',
+                'name'           => 'required|string|max:255',
+                'classification' => 'nullable|string|max:100',
+                'slug'           => 'nullable|string|max:255',
+                'image_url'      => 'nullable|string|max:2048',
+                'sku_prefix'     => 'nullable|string|max:10',
             ]);
 
             if (empty($validated['slug'])) {
@@ -370,8 +429,25 @@ class AdminController extends Controller
                 'status' => 'required|in:pending,reviewed,completed,declined',
             ]);
 
+            $oldStatus = $trade->status;
             $trade->status = $validated['status'];
             $trade->save();
+
+            // Send email notification for accepted or declined statuses
+            $newStatus = $trade->status;
+            if (in_array($newStatus, ['completed', 'reviewed', 'declined']) && !empty($trade->email)) {
+                try {
+                    Mail::to($trade->email)->send(
+                        new TradeStatusNotification($newStatus, $trade->description)
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Trade status email failed: ' . $e->getMessage(), [
+                        'trade_id' => $id,
+                        'email'    => $trade->email,
+                        'status'   => $newStatus,
+                    ]);
+                }
+            }
 
             return response()->json([
                 'message' => 'Trade status updated successfully.',
@@ -387,6 +463,28 @@ class AdminController extends Controller
             Log::error('Update trade status error: ' . $e->getMessage(), ['id' => $id]);
             return response()->json([
                 'message' => 'Failed to update trade status.',
+            ], 500);
+        }
+    }
+
+    // 14. Delete a trade request
+    public function deleteTrade($id)
+    {
+        try {
+            $trade = Trade::findOrFail($id);
+            $trade->delete();
+
+            return response()->json([
+                'message' => 'Trade request deleted successfully.',
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Trade request not found.',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Delete trade error: ' . $e->getMessage(), ['id' => $id]);
+            return response()->json([
+                'message' => 'Failed to delete trade request.',
             ], 500);
         }
     }
@@ -520,10 +618,11 @@ class AdminController extends Controller
             $group = ProductGroup::findOrFail($id);
 
             $validated = $request->validate([
-                'name'       => 'sometimes|required|string|max:255',
-                'slug'       => 'sometimes|required|string|max:255',
-                'image_url'  => 'nullable|string|max:2048',
-                'sku_prefix' => 'nullable|string|max:10',
+                'name'           => 'sometimes|required|string|max:255',
+                'classification' => 'nullable|string|max:100',
+                'slug'           => 'sometimes|required|string|max:255',
+                'image_url'      => 'nullable|string|max:2048',
+                'sku_prefix'     => 'nullable|string|max:10',
             ]);
 
             if (isset($validated['slug']) && $validated['slug'] !== $group->slug) {
@@ -550,6 +649,292 @@ class AdminController extends Controller
             Log::error('Update product group error: ' . $e->getMessage(), ['id' => $id]);
             return response()->json([
                 'message' => 'Failed to update category.',
+            ], 500);
+        }
+    }
+
+    /**
+     * List all non-admin users with transaction stats and velocity flags.
+     */
+    public function listUsers(Request $request)
+    {
+        try {
+            $users = User::where('is_admin', false)
+                ->withCount('transactions')
+                ->with(['transactions' => function ($q) {
+                    $q->select('id', 'user_id', 'created_at', 'price')
+                      ->orderBy('created_at', 'desc')
+                      ->limit(5);
+                }])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($user) {
+                    // Velocity: count transactions in last 1 hour
+                    $lastHourCount = Transaction::where('user_id', $user->id)
+                        ->where('created_at', '>=', now()->subHour())
+                        ->count();
+
+                    // Velocity: count transactions in last 24 hours
+                    $last24hCount = Transaction::where('user_id', $user->id)
+                        ->where('created_at', '>=', now()->subDay())
+                        ->count();
+
+                    // Total spend in last 24 hours
+                    $last24hSpend = Transaction::where('user_id', $user->id)
+                        ->where('created_at', '>=', now()->subDay())
+                        ->sum('price');
+
+                    // Trade velocity: count trades linked by email
+                    $tradeCount = Trade::where('email', $user->email)->count();
+
+                    $tradeLastHour = Trade::where('email', $user->email)
+                        ->where('created_at', '>=', now()->subHour())
+                        ->count();
+
+                    $tradeLast24h = Trade::where('email', $user->email)
+                        ->where('created_at', '>=', now()->subDay())
+                        ->count();
+
+                    $velocityFlags = [];
+                    if ($lastHourCount >= 5) {
+                        $velocityFlags[] = [
+                            'level' => 'high',
+                            'type' => 'hourly_volume',
+                            'message' => "{$lastHourCount} purchases in the last hour",
+                        ];
+                    } elseif ($lastHourCount >= 3) {
+                        $velocityFlags[] = [
+                            'level' => 'medium',
+                            'type' => 'hourly_volume',
+                            'message' => "{$lastHourCount} purchases in the last hour",
+                        ];
+                    }
+
+                    if ($last24hCount >= 15) {
+                        $velocityFlags[] = [
+                            'level' => 'high',
+                            'type' => 'daily_volume',
+                            'message' => "{$last24hCount} purchases in 24 hours",
+                        ];
+                    }
+
+                    if ($last24hSpend >= 100000) {
+                        $velocityFlags[] = [
+                            'level' => 'high',
+                            'type' => 'daily_spend',
+                            'message' => '৳' . number_format($last24hSpend) . ' spent in 24 hours',
+                        ];
+                    }
+
+                    // Trade velocity flags
+                    if ($tradeLastHour >= 3) {
+                        $velocityFlags[] = [
+                            'level' => 'high',
+                            'type' => 'trade_hourly_volume',
+                            'message' => "{$tradeLastHour} trade requests in the last hour",
+                        ];
+                    } elseif ($tradeLastHour >= 1) {
+                        $velocityFlags[] = [
+                            'level' => 'medium',
+                            'type' => 'trade_hourly_volume',
+                            'message' => "{$tradeLastHour} trade request in the last hour",
+                        ];
+                    }
+
+                    if ($tradeLast24h >= 10) {
+                        $velocityFlags[] = [
+                            'level' => 'high',
+                            'type' => 'trade_daily_volume',
+                            'message' => "{$tradeLast24h} trade requests in 24 hours",
+                        ];
+                    }
+
+                    $lastPurchase = $user->transactions->first()?->created_at;
+
+                    return [
+                        'id'                 => $user->id,
+                        'name'               => $user->name,
+                        'email'              => $user->email,
+                        'points'             => $user->points,
+                        'is_banned'          => (bool) $user->is_banned,
+                        'transactions_count' => $user->transactions_count,
+                        'last_purchase_at'   => $lastPurchase,
+                        'velocity_1h'        => $lastHourCount,
+                        'velocity_24h'       => $last24hCount,
+                        'spend_24h'          => $last24hSpend,
+                        'velocity_flags'     => $velocityFlags,
+                        'trade_count'        => $tradeCount,
+                        'trade_velocity_1h'  => $tradeLastHour,
+                        'trade_velocity_24h' => $tradeLast24h,
+                        'created_at'         => $user->created_at,
+                    ];
+                });
+
+            return response()->json($users, 200);
+        } catch (\Exception $e) {
+            Log::error('List users error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to load users.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Ban a user: set is_banned=true and revoke all Sanctum tokens.
+     */
+    public function banUser(Request $request, $id)
+    {
+        try {
+            $user = User::find($id);
+
+            if (! $user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if ($user->is_admin) {
+                return response()->json([
+                    'message' => 'Cannot ban an admin user.',
+                ], 403);
+            }
+
+            $user->update(['is_banned' => true]);
+
+            // Revoke all sanctum tokens to force re-login
+            $user->tokens()->delete();
+
+            Log::info("User #{$user->id} ({$user->email}) banned by admin.");
+
+            return response()->json([
+                'message' => "{$user->name} has been banned. All active sessions revoked.",
+                'user'    => [
+                    'id'        => $user->id,
+                    'name'      => $user->name,
+                    'email'     => $user->email,
+                    'is_banned' => true,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Ban user error: ' . $e->getMessage(), ['id' => $id]);
+            return response()->json([
+                'message' => 'Failed to ban user.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Unban a user: set is_banned=false.
+     */
+    public function unbanUser(Request $request, $id)
+    {
+        try {
+            $user = User::find($id);
+
+            if (! $user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            $user->update(['is_banned' => false]);
+
+            Log::info("User #{$user->id} ({$user->email}) unbanned by admin.");
+
+            return response()->json([
+                'message' => "{$user->name} has been unbanned.",
+                'user'    => [
+                    'id'        => $user->id,
+                    'name'      => $user->name,
+                    'email'     => $user->email,
+                    'is_banned' => false,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Unban user error: ' . $e->getMessage(), ['id' => $id]);
+            return response()->json([
+                'message' => 'Failed to unban user.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a user and all their associated data.
+     */
+    public function deleteUser(Request $request, $id)
+    {
+        try {
+            $user = User::find($id);
+
+            if (! $user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if ($user->is_admin) {
+                return response()->json([
+                    'message' => 'Cannot delete an admin user.',
+                ], 403);
+            }
+
+            // Delete all related transactions
+            Transaction::where('user_id', $user->id)->delete();
+
+            // Revoke all tokens
+            $user->tokens()->delete();
+
+            // Finally delete the user
+            $user->delete();
+
+            Log::info("User #{$id} ({$user->email}) deleted by admin.");
+
+            return response()->json([
+                'message' => "{$user->name} has been permanently deleted.",
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Delete user error: ' . $e->getMessage(), ['id' => $id]);
+            return response()->json([
+                'message' => 'Failed to delete user.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Update a user's loyalty points balance.
+     */
+    public function updateUserPoints(Request $request, $id)
+    {
+        try {
+            $validated = $request->validate([
+                'points' => 'required|integer|min:0',
+            ]);
+
+            $user = User::find($id);
+
+            if (! $user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            $oldPoints = $user->points;
+            $user->update(['points' => $validated['points']]);
+
+            Log::info("User #{$user->id} ({$user->email}) points adjusted from {$oldPoints} to {$validated['points']} by admin.");
+
+            return response()->json([
+                'message' => "{$user->name}'s points updated from {$oldPoints} to {$validated['points']}.",
+                'user'    => [
+                    'id'     => $user->id,
+                    'name'   => $user->name,
+                    'points' => $user->points,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Update user points error: ' . $e->getMessage(), ['id' => $id]);
+            return response()->json([
+                'message' => 'Failed to update points.',
             ], 500);
         }
     }

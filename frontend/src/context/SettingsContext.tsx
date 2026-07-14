@@ -24,7 +24,7 @@ const STORAGE_KEY = "kishershop_settings";
 
 // Fallbacks shown while the API call is in flight or if it fails, so the
 // header always has something to render.
-const DEFAULTS: SiteSettings = { siteName: "KisherShop", logoUrl: null };
+const DEFAULTS: SiteSettings = { siteName: "Kisher.Shop", logoUrl: null };
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(() => {

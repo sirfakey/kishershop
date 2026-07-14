@@ -10,6 +10,8 @@ import {
   ArrowLeftRight,
   Megaphone,
   Tag,
+  ShieldBan,
+  Users,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -19,6 +21,8 @@ const NAV_ITEMS = [
   { to: "/admin/categories", label: "Categories", icon: FolderOpen },
   { to: "/admin/trades", label: "Trade Requests", icon: ArrowLeftRight },
   { to: "/admin/coupons", label: "Coupons", icon: Tag },
+  { to: "/admin/fraud-radar", label: "Fraud Radar", icon: ShieldBan },
+  { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -39,7 +43,7 @@ export default function AdminLayout() {
         {/* Brand */}
         <div className="px-5 py-6 border-b border-slate-800">
           <h1 className="text-lg font-black text-white tracking-tight">
-            KisherShop
+            Kisher.Shop
           </h1>
         </div>
 

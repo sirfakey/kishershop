@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, Fragment } from "react";
+import { useEffect, useState, useMemo, Fragment, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { apiJson, apiDownload } from "../../lib/api";
@@ -93,6 +93,10 @@ export default function OrdersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+
   const fetchTransactions = () => {
     apiJson<Transaction[]>("/api/admin/transactions", token)
       .then(setTransactions)
@@ -164,13 +168,70 @@ export default function OrdersPage() {
     }
   };
 
+  // ── Sorting ──
+  const handleSort = useCallback((column: string) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+    } else if (sortDirection === "asc") {
+      setSortDirection("desc");
+    } else if (sortDirection === "desc") {
+      setSortColumn(null);
+      setSortDirection(null);
+    }
+  }, [sortColumn, sortDirection]);
+
+  const sortedTransactions = useMemo(() => {
+    if (!sortColumn || !sortDirection) return filteredTransactions;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...filteredTransactions].sort((a, b) => {
+      let valA: string | number = "";
+      let valB: string | number = "";
+      switch (sortColumn) {
+        case "trxid":
+          valA = a.transaction_id.toLowerCase();
+          valB = b.transaction_id.toLowerCase();
+          break;
+        case "sku":
+          valA = (a.product?.sku ?? "").toLowerCase();
+          valB = (b.product?.sku ?? "").toLowerCase();
+          break;
+        case "product":
+          valA = a.product_name.toLowerCase();
+          valB = b.product_name.toLowerCase();
+          break;
+        case "price":
+          valA = parseFloat(a.price);
+          valB = parseFloat(b.price);
+          break;
+        case "email":
+          valA = (a.customer_email ?? "").toLowerCase();
+          valB = (b.customer_email ?? "").toLowerCase();
+          break;
+        case "status":
+          valA = a.status.toLowerCase();
+          valB = b.status.toLowerCase();
+          break;
+        case "date":
+          valA = new Date(a.created_at).getTime();
+          valB = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+  }, [filteredTransactions, sortColumn, sortDirection]);
+
   // ── Export ──
   const handleExport = async () => {
     try {
       await apiDownload(
         "/api/admin/transactions/export",
         token,
-        `kishershop_sales_${new Date().toISOString().slice(0, 10)}.csv`,
+        `kisher-shop_sales_${new Date().toISOString().slice(0, 10)}.csv`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
@@ -262,34 +323,40 @@ export default function OrdersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-800 bg-slate-900/40">
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  TrxID
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  SKU
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Product
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Price
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Email
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Date
-                </th>
+                {([
+                  ["trxid", "TrxID"],
+                  ["sku", "SKU"],
+                  ["product", "Product"],
+                  ["price", "Price"],
+                  ["email", "Email"],
+                  ["status", "Status"],
+                  ["date", "Date"],
+                ] as const).map(([key, label]) => {
+                  const isActive = sortColumn === key;
+                  const arrow =
+                    !isActive ? "↕" : sortDirection === "asc" ? "▲" : "▼";
+                  return (
+                    <th
+                      key={key}
+                      onClick={() => handleSort(key)}
+                      className={`text-left px-4 py-3 text-xs font-bold uppercase tracking-wider cursor-pointer select-none hover:bg-slate-800/50 transition-colors ${
+                        isActive ? "text-indigo-400" : "text-slate-400"
+                      }`}
+                    >
+                      {label}{" "}
+                      <span className={isActive ? "text-indigo-400" : "text-slate-600"}>
+                        {arrow}
+                      </span>
+                    </th>
+                  );
+                })}
                 <th className="text-center px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 w-16">
                   Details
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {filteredTransactions.map((t) => {
+              {sortedTransactions.map((t) => {
                 const isExpanded = expandedId === t.id;
                 const hasCustomFields =
                   t.custom_fields && Object.keys(t.custom_fields).length > 0;

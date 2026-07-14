@@ -21,20 +21,20 @@ class CouponController extends Controller
                 'product_price' => 'required|numeric|min:0',
             ]);
 
-            $coupon = Coupon::where('code', $validated['code'])->first();
+            $coupon = Coupon::where('code', strtoupper($validated['code']))->first();
 
             if (! $coupon) {
                 return response()->json([
                     'valid'   => false,
                     'message' => 'Invalid coupon code.',
-                ], 404);
+                ], 200);
             }
 
             if (! $coupon->isValidFor((float) $validated['product_price'])) {
                 return response()->json([
                     'valid'   => false,
                     'message' => 'This coupon is expired, has reached its usage limit, or the minimum purchase amount is not met.',
-                ], 422);
+                ], 200);
             }
 
             $discount = $coupon->calculateDiscount((float) $validated['product_price']);
@@ -175,7 +175,7 @@ class CouponController extends Controller
     public function export(): StreamedResponse
     {
         try {
-            $fileName = 'kishershop_coupons_' . date('Y-m-d') . '.csv';
+            $fileName = 'kisher-shop_coupons_' . date('Y-m-d') . '.csv';
             $coupons = Coupon::orderBy('created_at', 'desc')->get();
 
             $headers = [

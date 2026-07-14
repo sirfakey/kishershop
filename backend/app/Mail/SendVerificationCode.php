@@ -26,7 +26,7 @@ class SendVerificationCode extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Verify Your Email — KisherShop',
+            subject: 'Verify Your Email — Kisher.Shop',
         );
     }
 

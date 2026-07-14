@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useCustomerAuth } from "../../context/CustomerAuthContext";
 import { apiJson } from "../../lib/api";
-import type { CustomerTransaction } from "../../data/categories";
-import { LogOut, Coins, ShoppingBag, User, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
+import type { CustomerTransaction, Trade } from "../../data/categories";
+import { LogOut, Coins, ShoppingBag, User, Mail, ShieldCheck, ArrowLeft, ArrowLeftRight } from "lucide-react";
 
 export default function AccountPage() {
   const { user, token, isAuthenticated, loading, login, register, verifyEmail, logout } =
@@ -28,13 +28,22 @@ export default function AccountPage() {
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // ── Trade requests ──────────────────────────────────────────────
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+
   useEffect(() => {
     if (isAuthenticated && token) {
       setHistoryLoading(true);
+      setTradesLoading(true);
       apiJson<CustomerTransaction[]>("/api/user/transactions", token)
         .then(setTransactions)
         .catch(() => setTransactions([]))
         .finally(() => setHistoryLoading(false));
+      apiJson<Trade[]>("/api/user/trades", token)
+        .then(setTrades)
+        .catch(() => setTrades([]))
+        .finally(() => setTradesLoading(false));
     }
   }, [isAuthenticated, token]);
 
@@ -476,6 +485,65 @@ export default function AccountPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Trade Requests */}
+      <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <ArrowLeftRight className="h-5 w-5 text-slate-400" />
+          <h3 className="text-lg font-bold text-white">Trade Requests</h3>
+        </div>
+
+        {tradesLoading ? (
+          <p className="text-sm text-slate-400">Loading trade requests...</p>
+        ) : trades.length === 0 ? (
+          <div className="text-center py-12">
+            <ArrowLeftRight className="mx-auto h-8 w-8 text-slate-600 mb-3" />
+            <p className="text-sm text-slate-500">No trade requests yet.</p>
+            <p className="text-xs text-slate-600 mt-1">
+              Your submitted trade requests will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <th className="pb-3 pr-4">Description</th>
+                  <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {trades.map((trade) => (
+                  <tr key={trade.id} className="text-slate-300">
+                    <td className="py-3 pr-4 max-w-[300px] truncate">
+                      {trade.description}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          trade.status === "completed"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : trade.status === "reviewed"
+                              ? "bg-blue-500/10 text-blue-400"
+                              : trade.status === "declined"
+                                ? "bg-rose-500/10 text-rose-400"
+                                : "bg-amber-500/10 text-amber-400"
+                        }`}
+                      >
+                        {trade.status}
+                      </span>
+                    </td>
+                    <td className="py-3 text-xs text-slate-500">
+                      {new Date(trade.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

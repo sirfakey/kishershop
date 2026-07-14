@@ -25,6 +25,7 @@ class ProductGroupController extends Controller
                 'custom_fields'       => 'nullable|array',
                 'points_to_redeem'    => 'nullable|integer|min:0',
                 'coupon_code'         => 'nullable|string',
+                'gateway'             => 'nullable|string|in:bkash,nagad',
             ]);
 
             $userId = null;
@@ -36,18 +37,39 @@ class ProductGroupController extends Controller
 
             // Detect authenticated customer via Sanctum
             $user = auth('sanctum')->user();
-            if ($user) {
-                $userId = $user->id;
+
+            // Feature 1: Enforce mandatory authentication for checkout
+            if (! $user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You must be logged in to make a purchase. Please create an account or log in.',
+                ], 401);
             }
 
-            // 2. Validate and apply coupon if provided
+            // Feature 2: Block banned users from checkout
+            if ($user->is_banned) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your account has been suspended. You cannot make purchases at this time.',
+                ], 403);
+            }
+
+            $userId = $user->id;
+
+            // 2. Validate and apply coupon if provided (case-insensitive)
+            $couponWarning = null;
             $couponCode = $validated['coupon_code'] ?? null;
             if ($couponCode) {
-                $coupon = Coupon::where('code', $couponCode)->first();
+                $coupon = Coupon::where('code', strtoupper($couponCode))->first();
                 if ($coupon && $coupon->isValidFor($finalPrice)) {
                     $couponId = $coupon->id;
                     $couponDiscount = (float) $coupon->calculateDiscount($finalPrice);
                     $finalPrice = max(0, $finalPrice - $couponDiscount);
+                } else {
+                    // Coupon was submitted but couldn't be applied
+                    $couponWarning = $coupon
+                        ? 'The coupon "' . $couponCode . '" is expired, has reached its usage limit, or the minimum purchase amount is not met.'
+                        : 'The coupon code "' . $couponCode . '" was not found.';
                 }
             }
 
@@ -79,9 +101,19 @@ class ProductGroupController extends Controller
                 $userId, $validated, $finalPrice, $couponCode, $couponId,
                 $couponDiscount, $pointsEarned, $pointsRedeemed
             ) {
-                // Increment coupon usage atomically
+                // Atomically increment coupon usage, enforcing max_uses limit
+                // Uses a conditional increment: only succeeds if under the limit
                 if ($couponId) {
-                    Coupon::where('id', $couponId)->increment('used_count');
+                    $affected = Coupon::where('id', $couponId)
+                        ->where(function ($q) {
+                            $q->whereNull('max_uses')
+                              ->orWhereRaw('used_count < max_uses');
+                        })
+                        ->increment('used_count');
+
+                    if ($affected === 0) {
+                        throw new \RuntimeException('Coupon usage limit reached.');
+                    }
                 }
 
                 // Deduct points atomically
@@ -104,24 +136,30 @@ class ProductGroupController extends Controller
                     'coupon_discount'     => $couponDiscount,
                     'points_earned'       => $pointsEarned,
                     'points_redeemed'     => $pointsRedeemed,
+                    'gateway'             => $validated['gateway'] ?? null,
                     'status'              => 'pending',
                 ]);
 
-                // Grant earned points
-                if ($userId && $pointsEarned > 0) {
-                    \App\Models\User::where('id', $userId)->increment('points', $pointsEarned);
-                }
+                // Points are NOT granted here — they are awarded when the
+                // admin marks the order as "completed" via fulfillTransaction
+                // or updateTransactionStatus.
             });
 
             // 6. Fetch the created transaction for the response
             $transaction = Transaction::where('transaction_id', $validated['transaction_id'])->first();
 
-            // 7. Return successful JSON response
-            return response()->json([
+            // 7. Return successful JSON response (include coupon warning if applicable)
+            $response = [
                 'success' => true,
                 'message' => 'Transaction verified and saved successfully!',
                 'data'    => $transaction,
-            ], 201);
+            ];
+
+            if ($couponWarning) {
+                $response['coupon_warning'] = $couponWarning;
+            }
+
+            return response()->json($response, 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e; // Let Laravel handle validation errors normally (422)

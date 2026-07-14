@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { apiJson } from "../../lib/api";
 import type { Trade } from "../../data/categories";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Trash2 } from "lucide-react";
+import ConfirmModal from "../../components/ConfirmModal";
 
 const STATUS_OPTIONS = ["pending", "reviewed", "completed", "declined"] as const;
 
@@ -30,6 +31,12 @@ export default function TradesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updateError, setUpdateError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Trade | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
 
   const fetchTrades = () => {
     apiJson<Trade[]>("/api/admin/trades", token)
@@ -58,6 +65,76 @@ export default function TradesPage() {
       setTimeout(() => setUpdateError(""), 3000);
     }
   };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      await apiJson(`/api/admin/trades/${deleteTarget.id}`, token, {
+        method: "DELETE",
+      });
+      setTrades((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : "Delete failed");
+      setTimeout(() => setUpdateError(""), 3000);
+    } finally {
+      setDeletingId(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  // ── Sorting ──
+  const handleSort = useCallback((column: string) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+    } else if (sortDirection === "asc") {
+      setSortDirection("desc");
+    } else if (sortDirection === "desc") {
+      setSortColumn(null);
+      setSortDirection(null);
+    }
+  }, [sortColumn, sortDirection]);
+
+  const sortedTrades = useMemo(() => {
+    if (!sortColumn || !sortDirection) return trades;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...trades].sort((a, b) => {
+      let valA: string | number = "";
+      let valB: string | number = "";
+      switch (sortColumn) {
+        case "id":
+          valA = a.id;
+          valB = b.id;
+          break;
+        case "email":
+          valA = (a.email ?? "").toLowerCase();
+          valB = (b.email ?? "").toLowerCase();
+          break;
+        case "whatsapp":
+          valA = (a.whatsapp_number ?? "").toLowerCase();
+          valB = (b.whatsapp_number ?? "").toLowerCase();
+          break;
+        case "description":
+          valA = (a.description ?? "").toLowerCase();
+          valB = (b.description ?? "").toLowerCase();
+          break;
+        case "status":
+          valA = a.status.toLowerCase();
+          valB = b.status.toLowerCase();
+          break;
+        case "date":
+          valA = new Date(a.created_at).getTime();
+          valB = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+  }, [trades, sortColumn, sortDirection]);
 
   if (loading) {
     return <p className="text-slate-400 text-sm">Loading trade requests...</p>;
@@ -94,17 +171,37 @@ export default function TradesPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">WhatsApp</th>
-                <th className="px-4 py-3">Description</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Date</th>
+                {([
+                  ["id", "ID"],
+                  ["email", "Email"],
+                  ["whatsapp", "WhatsApp"],
+                  ["description", "Description"],
+                  ["status", "Status"],
+                  ["date", "Date"],
+                ] as const).map(([key, label]) => {
+                  const isActive = sortColumn === key;
+                  const arrow =
+                    !isActive ? "↕" : sortDirection === "asc" ? "▲" : "▼";
+                  return (
+                    <th
+                      key={key}
+                      onClick={() => handleSort(key)}
+                      className={`px-4 py-3 cursor-pointer select-none hover:bg-slate-800/50 transition-colors ${
+                        isActive ? "text-indigo-400" : "text-slate-500"
+                      }`}
+                    >
+                      {label}{" "}
+                      <span className={isActive ? "text-indigo-400" : "text-slate-600"}>
+                        {arrow}
+                      </span>
+                    </th>
+                  );
+                })}
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {trades.map((trade) => (
+              {sortedTrades.map((trade) => (
                 <tr key={trade.id} className="text-slate-300 hover:bg-slate-800/30 transition-colors">
                   <td className="px-4 py-3 text-xs text-slate-500">#{trade.id}</td>
                   <td className="px-4 py-3 text-xs">
@@ -121,17 +218,27 @@ export default function TradesPage() {
                     {new Date(trade.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <select
-                      value={trade.status}
-                      onChange={(e) => updateStatus(trade.id, e.target.value as Trade["status"])}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs font-medium text-white outline-none focus:border-indigo-500"
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={trade.status}
+                        onChange={(e) => updateStatus(trade.id, e.target.value as Trade["status"])}
+                        className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs font-medium text-white outline-none focus:border-indigo-500"
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(trade)}
+                        className="rounded-lg p-1 text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="Delete trade request"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -139,6 +246,18 @@ export default function TradesPage() {
           </table>
         </div>
       )}
+
+      {/* ── Delete confirmation modal ── */}
+      <ConfirmModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Trade Request"
+        message={`Are you sure you want to permanently delete trade request #${deleteTarget?.id}? This action cannot be undone.`}
+        confirmLabel={deletingId ? "Deleting..." : "Delete Permanently"}
+        variant="danger"
+        loading={deletingId !== null}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { apiJson } from "../../lib/api";
@@ -20,6 +20,10 @@ export default function DashboardPage() {
   const [latestTrades, setLatestTrades] = useState<Trade[]>([]);
   const [tradesLoading, setTradesLoading] = useState(true);
 
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+
   useEffect(() => {
     apiJson<Stats>("/api/admin/stats", token)
       .then(setStats)
@@ -31,6 +35,55 @@ export default function DashboardPage() {
       .catch(() => setLatestTrades([]))
       .finally(() => setTradesLoading(false));
   }, [token]);
+
+  // ── Sorting ──
+  const handleSort = useCallback((column: string) => {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+    } else if (sortDirection === "asc") {
+      setSortDirection("desc");
+    } else if (sortDirection === "desc") {
+      setSortColumn(null);
+      setSortDirection(null);
+    }
+  }, [sortColumn, sortDirection]);
+
+  const sortedTrades = useMemo(() => {
+    if (!sortColumn || !sortDirection) return latestTrades;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...latestTrades].sort((a, b) => {
+      let valA: string | number = "";
+      let valB: string | number = "";
+      switch (sortColumn) {
+        case "email":
+          valA = (a.email ?? "").toLowerCase();
+          valB = (b.email ?? "").toLowerCase();
+          break;
+        case "whatsapp":
+          valA = (a.whatsapp_number ?? "").toLowerCase();
+          valB = (b.whatsapp_number ?? "").toLowerCase();
+          break;
+        case "description":
+          valA = (a.description ?? "").toLowerCase();
+          valB = (b.description ?? "").toLowerCase();
+          break;
+        case "status":
+          valA = a.status.toLowerCase();
+          valB = b.status.toLowerCase();
+          break;
+        case "date":
+          valA = new Date(a.created_at).getTime();
+          valB = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+  }, [latestTrades, sortColumn, sortDirection]);
 
   if (loading) {
     return <p className="text-slate-400 text-sm">Loading store stats...</p>;
@@ -121,15 +174,35 @@ export default function DashboardPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">WhatsApp</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Date</th>
+                  {([
+                    ["email", "Email"],
+                    ["whatsapp", "WhatsApp"],
+                    ["description", "Description"],
+                    ["status", "Status"],
+                    ["date", "Date"],
+                  ] as const).map(([key, label]) => {
+                    const isActive = sortColumn === key;
+                    const arrow =
+                      !isActive ? "↕" : sortDirection === "asc" ? "▲" : "▼";
+                    return (
+                      <th
+                        key={key}
+                        onClick={() => handleSort(key)}
+                        className={`px-4 py-3 cursor-pointer select-none hover:bg-slate-800/50 transition-colors ${
+                          isActive ? "text-indigo-400" : "text-slate-500"
+                        }`}
+                      >
+                        {label}{" "}
+                        <span className={isActive ? "text-indigo-400" : "text-slate-600"}>
+                          {arrow}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
-                {latestTrades.map((trade) => (
+                {sortedTrades.map((trade) => (
                   <tr key={trade.id} className="text-slate-300">
                     <td className="px-4 py-3 text-xs">
                       {trade.email || <span className="text-slate-600">—</span>}

@@ -12,7 +12,7 @@ class SettingSeeder extends Seeder
      */
     public function run(): void
     {
-        Setting::set('site_name', 'KisherShop');
+        Setting::set('site_name', 'Kisher.Shop');
         // Empty logo_url makes the frontend render a styled text-mark fallback.
         Setting::set('logo_url', null);
     }

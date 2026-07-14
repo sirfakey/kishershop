@@ -42,7 +42,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Brand strip */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-black text-white tracking-tight">KisherShop</h1>
+          <h1 className="text-2xl font-black text-white tracking-tight">Kisher.Shop</h1>
           <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-widest">
             Admin Console
           </p>
@@ -64,7 +64,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@kishershop.com"
+                placeholder="admin@kisher.shop"
                 autoComplete="email"
                 className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
               />

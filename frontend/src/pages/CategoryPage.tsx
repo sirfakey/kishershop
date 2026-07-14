@@ -116,10 +116,14 @@ export default function CategoryPage() {
           {filteredProducts.map((product) => {
               const currentPrice = parseFloat(product.price);
               const originalPrice = product.original_price ? parseFloat(product.original_price) : null;
-              const hasDiscount = originalPrice && originalPrice > currentPrice;
-              const discountPct = hasDiscount
-                ? Math.round(((originalPrice! - currentPrice) / originalPrice!) * 100)
-                : 0;
+              const explicitDiscount = product.discount_percentage && product.discount_percentage > 0;
+              const computedDiscount = originalPrice && originalPrice > currentPrice;
+              const hasDiscount = explicitDiscount || computedDiscount;
+              const discountPct = explicitDiscount
+                ? product.discount_percentage!
+                : computedDiscount
+                  ? Math.round(((originalPrice! - currentPrice) / originalPrice!) * 100)
+                  : 0;
 
               const discountBadgeColors =
                 discountPct < 10
@@ -131,41 +135,21 @@ export default function CategoryPage() {
               return (
                 <div
                   key={product.id}
-                  className="flex flex-col rounded-xl border border-slate-900 bg-slate-900/20 p-5 transition-all hover:border-slate-800 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
+                  className="flex flex-col h-full rounded-xl border border-slate-800/60 bg-slate-900/30 p-5 transition-all hover:border-slate-700 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
                 >
-                  {/* ── Upper Section: Text stack (left) + Image (right) ── */}
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Text details pinned TOP-LEFT */}
-                    <div className="flex-1 min-w-0">
-                      <span className="inline-block text-xs font-mono font-bold tracking-widest text-slate-500 uppercase bg-slate-900 px-2 py-1 rounded">
+                  {/* ── Top: Type tag + Title + Image ── */}
+                  <div className="flex items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
                         {product.type.replace("-", " ")}
                       </span>
-                      <h3 className="text-lg font-bold text-white mt-3 truncate">{product.name}</h3>
-
-                      {/* Pricing row */}
-                      <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
-                        <span className="text-2xl font-black text-emerald-400">
-                          ৳{currentPrice.toLocaleString()}
-                        </span>
-                        {originalPrice && originalPrice > 0 && (
-                          <span className="text-sm text-slate-500 line-through">
-                            ৳{originalPrice.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Dynamic discount badge */}
-                      {hasDiscount && (
-                        <span
-                          className={`mt-2 inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold ${discountBadgeColors}`}
-                        >
-                          -{discountPct}%
-                        </span>
-                      )}
+                      <h3 className="text-sm font-bold text-white mt-1 leading-snug line-clamp-2">
+                        {product.name}
+                      </h3>
                     </div>
 
-                    {/* Image (right-aligned, 80×80) */}
-                    <div className="shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center">
+                    {/* Image — rigid, subtle border, vertically centered */}
+                    <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/50 flex items-center justify-center">
                       {product.image_url ? (
                         <img
                           src={product.image_url}
@@ -173,24 +157,43 @@ export default function CategoryPage() {
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             const parent = (e.target as HTMLImageElement).parentElement!;
-                            parent.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>`;
+                            parent.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>`;
                           }}
                         />
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
                         </svg>
                       )}
                     </div>
                   </div>
 
-                  {/* ── Buy Now Button (full-width at bottom) ── */}
-                  <button
-                    onClick={() => setSelectedProduct(product)}
-                    className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold hover:bg-indigo-500 transition-colors"
-                  >
-                    Buy Now
-                  </button>
+                  {/* ── Footer: pinned to bottom via mt-auto ── */}
+                  <div className="mt-auto flex flex-col gap-3 w-full">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-xl font-black text-teal-400">
+                        ৳{currentPrice.toLocaleString()}
+                      </span>
+                      {originalPrice && originalPrice > 0 && (
+                        <span className="text-xs text-slate-500 line-through">
+                          ৳{originalPrice.toLocaleString()}
+                        </span>
+                      )}
+                      {hasDiscount && (
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${discountBadgeColors}`}
+                        >
+                          -{discountPct}%
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setSelectedProduct(product)}
+                      className="w-full rounded-lg bg-purple-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-purple-500 transition-colors"
+                    >
+                      Buy Now
+                    </button>
+                  </div>
                 </div>
               );
             })}

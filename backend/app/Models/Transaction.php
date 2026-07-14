@@ -25,6 +25,7 @@ class Transaction extends Model
         'status',
         'points_earned',
         'points_redeemed',
+        'gateway',
     ];
 
     protected $casts = [

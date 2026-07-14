@@ -24,7 +24,7 @@ export default function SettingsPage() {
   useEffect(() => {
     apiJson<PublicSettings>("/api/settings", token)
       .then((data) => {
-        setSiteName(data.site_name || "KisherShop");
+        setSiteName(data.site_name || "Kisher.Shop");
         setLogoUrl(data.logo_url || "");
       })
       .catch((err) =>

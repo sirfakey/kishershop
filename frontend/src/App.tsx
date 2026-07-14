@@ -18,6 +18,8 @@ import SettingsPage from "./pages/admin/SettingsPage";
 import TradesPage from "./pages/admin/TradesPage";
 import AnnouncementsPage from "./pages/admin/AnnouncementsPage";
 import CouponsPage from "./pages/admin/CouponsPage";
+import FraudRadarPage from "./pages/admin/FraudRadarPage";
+import UsersPage from "./pages/admin/UsersPage";
 
 export default function App() {
   return (
@@ -54,6 +56,8 @@ export default function App() {
                   <Route path="trades" element={<TradesPage />} />
                   <Route path="announcements" element={<AnnouncementsPage />} />
                   <Route path="coupons" element={<CouponsPage />} />
+                  <Route path="fraud-radar" element={<FraudRadarPage />} />
+                  <Route path="users" element={<UsersPage />} />
                 </Route>
               </Routes>
             </Router>

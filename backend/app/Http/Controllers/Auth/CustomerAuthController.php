@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Trade;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -62,6 +63,13 @@ class CustomerAuthController extends Controller
                 ]);
             }
 
+            // Block banned users from logging in
+            if ($user->is_banned) {
+                return response()->json([
+                    'message' => 'Your account has been suspended. Please contact support.',
+                ], 403);
+            }
+
             $token = $user->createToken('customer-token')->plainTextToken;
 
             return response()->json([
@@ -71,7 +79,8 @@ class CustomerAuthController extends Controller
                     'id'     => $user->id,
                     'name'   => $user->name,
                     'email'  => $user->email,
-                    'points' => $user->points,
+                    'points'    => $user->points,
+                    'is_banned' => (bool) $user->is_banned,
                 ],
             ], 200);
         } catch (ValidationException $e) {
@@ -97,6 +106,13 @@ class CustomerAuthController extends Controller
 
             $user = User::where('email', $validated['email'])->first();
 
+            // Block banned users from verifying email
+            if ($user->is_banned) {
+                return response()->json([
+                    'message' => 'Your account has been suspended. Please contact support.',
+                ], 403);
+            }
+
             $token = $user->createToken('customer-token')->plainTextToken;
 
             return response()->json([
@@ -106,7 +122,8 @@ class CustomerAuthController extends Controller
                     'id'     => $user->id,
                     'name'   => $user->name,
                     'email'  => $user->email,
-                    'points' => $user->points,
+                    'points'    => $user->points,
+                    'is_banned' => (bool) $user->is_banned,
                 ],
             ], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -134,10 +151,11 @@ class CustomerAuthController extends Controller
             }
 
             return response()->json([
-                'id'     => $user->id,
-                'name'   => $user->name,
-                'email'  => $user->email,
-                'points' => $user->points,
+                'id'       => $user->id,
+                'name'     => $user->name,
+                'email'    => $user->email,
+                'points'   => $user->points,
+                'is_banned'=> (bool) $user->is_banned,
             ], 200);
         } catch (\Exception $e) {
             Log::error('Customer me error: ' . $e->getMessage());
@@ -172,6 +190,33 @@ class CustomerAuthController extends Controller
             Log::error('Purchase history error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Failed to load purchase history.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Return the authenticated customer's trade requests.
+     */
+    public function tradeHistory(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (! $user) {
+                return response()->json([
+                    'message' => 'Unauthenticated.',
+                ], 401);
+            }
+
+            $trades = Trade::where('email', $user->email)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json($trades, 200);
+        } catch (\Exception $e) {
+            Log::error('Trade history error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to load trade requests.',
             ], 500);
         }
     }

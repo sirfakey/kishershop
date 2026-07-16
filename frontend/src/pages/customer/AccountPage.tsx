@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useCustomerAuth } from "../../context/CustomerAuthContext";
 import { apiJson } from "../../lib/api";
 import { useSEO } from "../../lib/useSEO";
@@ -37,6 +37,7 @@ export default function AccountPage() {
   // ── Purchase history ────────────────────────────────────────────
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedTxId, setExpandedTxId] = useState<number | null>(null);
 
   // ── Trade requests ──────────────────────────────────────────────
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -479,50 +480,125 @@ export default function AccountPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
-                  {transactions.map((tx) => (
-                    <tr key={tx.id} className="text-slate-300">
-                      <td className="py-3 pr-4 font-medium text-white">
-                        {tx.product_name}
-                        {tx.product?.product_group && (
-                          <span className="block text-xs text-slate-500">
-                            {tx.product.product_group.name}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4">৳{parseFloat(tx.price).toLocaleString()}</td>
-                      <td className="py-3 pr-4">
-                        {tx.points_earned > 0 && (
-                          <span className="text-emerald-400 text-xs">
-                            +{tx.points_earned}
-                          </span>
-                        )}
-                        {tx.points_redeemed > 0 && (
-                          <span className="text-amber-400 text-xs">
-                            -{tx.points_redeemed}
-                          </span>
-                        )}
-                        {tx.points_earned === 0 && tx.points_redeemed === 0 && (
-                          <span className="text-slate-600">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            tx.status === "completed"
-                              ? "bg-emerald-500/10 text-emerald-400"
-                              : tx.status === "pending"
-                                ? "bg-amber-500/10 text-amber-400"
-                                : "bg-rose-500/10 text-rose-400"
+                  {transactions.map((tx) => {
+                    const isExpanded = expandedTxId === tx.id;
+                    const hasMultiItems = tx.items && tx.items.length > 1;
+                    return (
+                      <Fragment key={tx.id}>
+                        <tr
+                          onClick={() =>
+                            setExpandedTxId(isExpanded ? null : tx.id)
+                          }
+                          className={`text-slate-300 transition-colors ${
+                            hasMultiItems
+                              ? "cursor-pointer hover:bg-slate-800/30"
+                              : ""
                           }`}
                         >
-                          {tx.status}
-                        </span>
-                      </td>
-                      <td className="py-3 text-xs text-slate-500">
-                        {new Date(tx.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="py-3 pr-4 font-medium text-white">
+                            <div className="flex items-center gap-1.5">
+                              {tx.product_name}
+                              {hasMultiItems && (
+                                <span className="text-[10px] text-slate-500">
+                                  & {tx.items!.length - 1} more
+                                </span>
+                              )}
+                              {tx.items && tx.items.length === 1 && (tx.quantity ?? 1) > 1 && (
+                                <span className="inline-flex items-center justify-center rounded-full bg-indigo-600/30 px-1.5 py-0 text-[10px] font-bold text-indigo-300">
+                                  ×{tx.quantity}
+                                </span>
+                              )}
+                            </div>
+                            {tx.product?.product_group && (
+                              <span className="block text-xs text-slate-500">
+                                {tx.product.product_group.name}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">৳{parseFloat(tx.price).toLocaleString()}</td>
+                          <td className="py-3 pr-4">
+                            {tx.points_earned > 0 && (
+                              <span className="text-emerald-400 text-xs">
+                                +{tx.points_earned}
+                              </span>
+                            )}
+                            {tx.points_redeemed > 0 && (
+                              <span className="text-amber-400 text-xs">
+                                -{tx.points_redeemed}
+                              </span>
+                            )}
+                            {tx.points_earned === 0 && tx.points_redeemed === 0 && (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                tx.status === "completed"
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : tx.status === "pending"
+                                    ? "bg-amber-500/10 text-amber-400"
+                                    : "bg-rose-500/10 text-rose-400"
+                              }`}
+                            >
+                              {tx.status}
+                            </span>
+                          </td>
+                          <td className="py-3 text-xs text-slate-500">
+                            {new Date(tx.created_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+
+                        {/* Expanded line items row */}
+                        {isExpanded && tx.items && tx.items.length > 0 && (
+                          <tr className="bg-slate-800/30">
+                            <td colSpan={5} className="px-4 py-3">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs border border-slate-700 rounded-lg overflow-hidden">
+                                  <thead>
+                                    <tr className="bg-slate-800/60">
+                                      <th className="text-left px-3 py-1.5 text-slate-400 font-medium">Item</th>
+                                      <th className="text-center px-3 py-1.5 text-slate-400 font-medium w-14">Qty</th>
+                                      <th className="text-right px-3 py-1.5 text-slate-400 font-medium w-20">Price</th>
+                                      <th className="text-right px-3 py-1.5 text-slate-400 font-medium w-24">Subtotal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-700/40">
+                                    {tx.items.map((item, idx) => (
+                                      <tr key={idx}>
+                                        <td className="px-3 py-1.5 text-slate-300 font-medium">
+                                          {item.product_name}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-center text-slate-400">
+                                          {item.quantity}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right text-slate-400 font-mono">
+                                          ৳{item.price.toLocaleString()}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right text-emerald-400 font-semibold font-mono">
+                                          ৳{item.subtotal.toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="border-t border-slate-700">
+                                      <td colSpan={3} className="px-3 py-1.5 text-right text-slate-400 font-bold text-[11px]">
+                                        Total
+                                      </td>
+                                      <td className="px-3 py-1.5 text-right text-emerald-400 font-bold font-mono">
+                                        ৳{parseFloat(tx.price).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

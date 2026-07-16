@@ -16,9 +16,12 @@ class Transaction extends Model
         'product_name',
         'product_id',
         'price',
+        'items',
+        'quantity',
         'customer_email',
         'account_credentials',
         'custom_fields',
+        'seller_notes',
         'coupon_code',
         'coupon_id',
         'coupon_discount',
@@ -30,11 +33,13 @@ class Transaction extends Model
 
     protected $casts = [
         'custom_fields'   => 'array',
+        'items'           => 'array',
         'price'           => 'decimal:2',
         'coupon_discount' => 'decimal:2',
         'coupon_id'       => 'integer',
         'points_earned'   => 'integer',
         'points_redeemed'  => 'integer',
+        'quantity'        => 'integer',
     ];
 
     /**

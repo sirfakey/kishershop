@@ -57,6 +57,9 @@ NEW_MIGRATIONS = [
     "2026_07_14_000007_add_description_to_products.php",
     "2026_07_14_000008_add_classification_to_product_groups.php",
     "2026_07_16_000001_make_original_price_nullable_on_products.php",
+    "2026_07_17_000001_add_items_and_quantity_to_transactions.php",
+    "2026_07_17_000002_add_seller_notes_to_transactions.php",
+    "2026_07_17_000003_add_custom_checkout_fields_to_products.php",
 ]
 
 

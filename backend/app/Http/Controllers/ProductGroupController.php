@@ -15,17 +15,23 @@ class ProductGroupController extends Controller
     {
         try {
             // 1. Force strict data filtering and unique validation check
+            //    Accepts BOTH single-product (backward compat) and multi-item payloads
             $validated = $request->validate([
                 'transaction_id'      => 'required|string|unique:transactions,transaction_id',
-                'product_name'        => 'required|string',
+                'product_name'        => 'nullable|string|required_without:items',
                 'product_id'          => 'nullable|exists:products,id',
-                'price'               => 'required|numeric|min:0',
-                'customer_email'      => 'nullable|email',
-                'account_credentials' => 'nullable|string',
-                'custom_fields'       => 'nullable|array',
-                'points_to_redeem'    => 'nullable|integer|min:0',
-                'coupon_code'         => 'nullable|string',
-                'gateway'             => 'nullable|string|in:bkash,nagad',
+                'price'               => 'nullable|numeric|min:0|required_without:items',
+                'items'                 => 'nullable|array|min:1',
+                'items.*.product_id'    => 'required_with:items|exists:products,id',
+                'items.*.quantity'      => 'required_with:items|integer|min:1',
+                'items.*.custom_fields' => 'nullable|array',
+                'customer_email'        => 'nullable|email',
+                'account_credentials'   => 'nullable|string',
+                'custom_fields'         => 'nullable|array',
+                'seller_notes'          => 'nullable|string|max:2000',
+                'points_to_redeem'      => 'nullable|integer|min:0',
+                'coupon_code'           => 'nullable|string',
+                'gateway'               => 'nullable|string|in:bkash,nagad',
             ]);
 
             $userId = null;
@@ -33,7 +39,45 @@ class ProductGroupController extends Controller
             $pointsRedeemed = 0;
             $couponId = null;
             $couponDiscount = 0;
-            $finalPrice = (float) $validated['price'];
+
+            // ─── Price resolution ────────────────────────────────────────
+            $lineItems = null;
+            $totalQuantity = 1;
+
+            if (!empty($validated['items'])) {
+                // Multi-item path — fetch prices from DB (NEVER trust client)
+                $lineItems = [];
+                $lineItemProductId = null;
+                $lineItemProductName = null;
+                $aggregatePrice = 0;
+
+                foreach ($validated['items'] as $item) {
+                    $product = \App\Models\Product::findOrFail($item['product_id']);
+                    $qty = (int) $item['quantity'];
+                    $unitPrice = (float) $product->price;
+                    $subtotal = $unitPrice * $qty;
+                    $lineItems[] = [
+                        'product_id'   => $product->id,
+                        'product_name' => $product->name,
+                        'price'        => $unitPrice,
+                        'quantity'     => $qty,
+                        'subtotal'     => $subtotal,
+                        'custom_fields' => $item['custom_fields'] ?? null,
+                    ];
+                    $aggregatePrice += $subtotal;
+                }
+                $finalPrice = $aggregatePrice;
+                $totalQuantity = array_sum(array_column($lineItems, 'quantity'));
+                $lineItemProductId = $lineItems[0]['product_id'];
+                $lineItemProductName = count($lineItems) === 1
+                    ? $lineItems[0]['product_name']
+                    : $lineItems[0]['product_name'] . ' & ' . (count($lineItems) - 1) . ' more';
+            } else {
+                // Single-product path (backward compat)
+                $finalPrice = (float) $validated['price'];
+                $lineItemProductName = $validated['product_name'];
+                $lineItemProductId = $validated['product_id'] ?? null;
+            }
 
             // Detect authenticated customer via Sanctum
             $user = auth('sanctum')->user();
@@ -99,7 +143,8 @@ class ProductGroupController extends Controller
             // 5. Atomic DB transaction: coupon increment + points deduction + transaction + points earning
             DB::transaction(function () use (
                 $userId, $validated, $finalPrice, $couponCode, $couponId,
-                $couponDiscount, $pointsEarned, $pointsRedeemed
+                $couponDiscount, $pointsEarned, $pointsRedeemed,
+                $lineItems, $totalQuantity, $lineItemProductName, $lineItemProductId
             ) {
                 // Atomically increment coupon usage, enforcing max_uses limit
                 // Uses a conditional increment: only succeeds if under the limit
@@ -125,12 +170,15 @@ class ProductGroupController extends Controller
                 Transaction::create([
                     'user_id'             => $userId,
                     'transaction_id'      => $validated['transaction_id'],
-                    'product_name'        => $validated['product_name'],
-                    'product_id'          => $validated['product_id'] ?? null,
+                    'product_name'        => $lineItemProductName,
+                    'product_id'          => $lineItemProductId,
                     'price'               => $finalPrice,
+                    'items'               => $lineItems,
+                    'quantity'            => $totalQuantity,
                     'customer_email'      => $validated['customer_email'] ?? null,
                     'account_credentials' => $validated['account_credentials'] ?? null,
                     'custom_fields'       => $validated['custom_fields'] ?? null,
+                    'seller_notes'        => $validated['seller_notes'] ?? null,
                     'coupon_code'         => $couponCode,
                     'coupon_id'           => $couponId,
                     'coupon_discount'     => $couponDiscount,

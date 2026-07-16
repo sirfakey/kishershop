@@ -21,15 +21,20 @@ class Product extends Model
         'product_group_id',
         'type',
         'custom_form_code',
+        'custom_checkout_fields',
+        'enable_seller_notes',
+        'custom_checkout_html',
         'sku',
         'image_url',
     ];
 
     protected $casts = [
-        'price'               => 'decimal:2',
-        'original_price'      => 'decimal:2',
-        'discount_percentage' => 'integer',
-        'is_available'        => 'boolean',
+        'price'                  => 'decimal:2',
+        'original_price'         => 'decimal:2',
+        'discount_percentage'    => 'integer',
+        'is_available'           => 'boolean',
+        'enable_seller_notes'    => 'boolean',
+        'custom_checkout_fields' => 'array',
     ];
 
     /**

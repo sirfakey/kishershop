@@ -15,7 +15,8 @@ import { apiJson } from "../../lib/api";
 import MegaMenu from "./MegaMenu";
 import TradeModal from "../TradeModal";
 import NotificationDropdown from "../NotificationDropdown";
-import type { ProductGroup } from "../../data/categories";
+import CheckoutModal from "../CheckoutModal";
+import type { ProductGroup, Product } from "../../data/categories";
 
 const NAV_ITEMS = [
   { key: "currency", label: "Currency" },
@@ -57,6 +58,9 @@ export default function MarketplaceHeader() {
   const { siteName, logoUrl } = useSettings();
   const navigate = useNavigate();
   const { isAuthenticated } = useCustomerAuth();
+
+  // ─── Checkout modal (triggered from product page) ───
+  const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
 
   // ─── Games list (shared by search dropdown + mega menu) ───
   const [games, setGames] = useState<ProductGroup[]>([]);
@@ -381,6 +385,15 @@ export default function MarketplaceHeader() {
             setTradeSuccess(true);
             setTimeout(() => setTradeSuccess(false), 5000);
           }}
+        />
+      )}
+
+      {/* ─── Checkout modal ─── */}
+      {checkoutProduct && (
+        <CheckoutModal
+          product={checkoutProduct}
+          onClose={() => setCheckoutProduct(null)}
+          onSuccess={() => setCheckoutProduct(null)}
         />
       )}
     </header>

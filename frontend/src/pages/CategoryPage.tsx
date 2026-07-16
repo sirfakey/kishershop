@@ -213,12 +213,14 @@ export default function CategoryPage() {
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => setSelectedProduct(product)}
-                      className="w-full rounded-lg bg-purple-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-purple-500 transition-colors"
-                    >
-                      Buy Now
-                    </button>
+                    <div>
+                      <button
+                        onClick={() => setSelectedProduct(product)}
+                        className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors"
+                      >
+                        Buy Now
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

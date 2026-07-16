@@ -177,16 +177,19 @@ class AdminController extends Controller
             $this->normalizeOptionalDiscountFields($request);
 
             $validated = $request->validate([
-                'name'                => 'required|string|max:255',
-                'description'         => 'nullable|string',
-                'price'               => 'required|numeric|min:0',
-                'original_price'      => 'nullable|numeric|min:0',
-                'discount_percentage' => 'nullable|integer|min:1|max:99',
-                'product_group_id'    => 'required|exists:product_groups,id',
-                'type'                => 'required|string',
-                'custom_form_code'    => 'nullable|string',
-                'sku'                 => 'nullable|string|unique:products,sku',
-                'image_url'           => 'nullable|string|max:2048',
+                'name'                   => 'required|string|max:255',
+                'description'            => 'nullable|string',
+                'price'                  => 'required|numeric|min:0',
+                'original_price'         => 'nullable|numeric|min:0',
+                'discount_percentage'    => 'nullable|integer|min:1|max:99',
+                'product_group_id'       => 'required|exists:product_groups,id',
+                'type'                   => 'required|string',
+                'custom_form_code'       => 'nullable|string',
+                'custom_checkout_fields' => 'nullable|array',
+                'enable_seller_notes'    => 'boolean',
+                'custom_checkout_html'   => 'nullable|string',
+                'sku'                    => 'nullable|string|unique:products,sku',
+                'image_url'              => 'nullable|string|max:2048',
             ]);
 
             // Section 2: original_price must be > price when provided
@@ -231,13 +234,37 @@ class AdminController extends Controller
             $callback = function () use ($transactions) {
                 $file = fopen('php://output', 'w');
 
-                fputcsv($file, ['ID', 'Transaction ID', 'Price', 'Status', 'Date Created']);
+                fputcsv($file, [
+                    'ID', 'Transaction ID', 'Product(s)', 'Quantity',
+                    'Price', 'Customer Email', 'Gateway', 'Status', 'Date Created',
+                ]);
 
                 foreach ($transactions as $row) {
+                    // Derive product name(s) from items column if present
+                    $productNames = '';
+                    $totalQty = 0;
+                    if (!empty($row->items) && is_array($row->items)) {
+                        $parts = [];
+                        foreach ($row->items as $item) {
+                            $qty = $item['quantity'] ?? 1;
+                            $name = $item['product_name'] ?? 'Unknown';
+                            $parts[] = $qty > 1 ? "$name (x$qty)" : $name;
+                            $totalQty += $qty;
+                        }
+                        $productNames = implode(', ', $parts);
+                    } else {
+                        $productNames = $row->product_name ?? '—';
+                        $totalQty = $row->quantity ?? 1;
+                    }
+
                     fputcsv($file, [
                         $row->id,
                         $row->transaction_id,
+                        $productNames,
+                        $totalQty,
                         $row->price,
+                        $row->customer_email ?? '—',
+                        $row->gateway ?? '—',
                         $row->status,
                         $row->created_at,
                     ]);
@@ -287,16 +314,19 @@ class AdminController extends Controller
             $this->normalizeOptionalDiscountFields($request);
 
             $validated = $request->validate([
-                'name'                => 'sometimes|required|string|max:255',
-                'description'         => 'nullable|string',
-                'price'               => 'sometimes|required|numeric|min:0',
-                'original_price'      => 'nullable|numeric|min:0',
-                'discount_percentage' => 'nullable|integer|min:1|max:99',
-                'product_group_id'    => 'sometimes|required|exists:product_groups,id',
-                'type'                => 'sometimes|required|string',
-                'custom_form_code'    => 'nullable|string',
-                'sku'                 => 'nullable|string|unique:products,sku,' . $id,
-                'image_url'           => 'nullable|string|max:2048',
+                'name'                   => 'sometimes|required|string|max:255',
+                'description'            => 'nullable|string',
+                'price'                  => 'sometimes|required|numeric|min:0',
+                'original_price'         => 'nullable|numeric|min:0',
+                'discount_percentage'    => 'nullable|integer|min:1|max:99',
+                'product_group_id'       => 'sometimes|required|exists:product_groups,id',
+                'type'                   => 'sometimes|required|string',
+                'custom_form_code'       => 'nullable|string',
+                'custom_checkout_fields' => 'nullable|array',
+                'enable_seller_notes'    => 'boolean',
+                'custom_checkout_html'   => 'nullable|string',
+                'sku'                    => 'nullable|string|unique:products,sku,' . $id,
+                'image_url'              => 'nullable|string|max:2048',
             ]);
 
             // Section 2: original_price must be > price when PROVIDED. Crucially,

@@ -11,6 +11,15 @@ interface TransactionProduct {
   sku: string | null;
 }
 
+interface OrderItem {
+  product_id: number;
+  product_name: string;
+  price: number;
+  quantity: number;
+  subtotal: number;
+  custom_fields?: Record<string, string> | null;
+}
+
 interface Transaction {
   id: number;
   transaction_id: string;
@@ -21,6 +30,9 @@ interface Transaction {
   customer_email: string | null;
   account_credentials: string | null;
   custom_fields: Record<string, string> | null;
+  seller_notes?: string | null;
+  items?: OrderItem[] | null;
+  quantity?: number;
   status: string;
   created_at: string;
 }
@@ -373,12 +385,26 @@ export default function OrdersPage() {
 
                       {/* SKU */}
                       <td className="px-4 py-3 font-mono text-xs text-slate-400">
-                        {t.product?.sku ?? "—"}
+                        {t.items && t.items.length > 1
+                          ? `${t.product?.sku ?? "—"} …`
+                          : (t.product?.sku ?? "—")}
                       </td>
 
                       {/* Product name */}
                       <td className="px-4 py-3 text-white font-medium">
-                        {t.product_name}
+                        <div>
+                          {t.product_name}
+                        </div>
+                        {t.items && t.items.length > 1 && (
+                          <span className="text-[10px] text-slate-500">
+                            & {t.items.length - 1} more item{t.items.length - 1 !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {t.items && t.items.length === 1 && (t.quantity ?? 1) > 1 && (
+                          <span className="inline-flex items-center justify-center ml-1.5 rounded-full bg-indigo-600/30 px-1.5 py-0 text-[10px] font-bold text-indigo-300">
+                            ×{t.quantity}
+                          </span>
+                        )}
                       </td>
 
                       {/* Price */}
@@ -485,6 +511,75 @@ export default function OrdersPage() {
                     {isExpanded && (
                       <tr className="bg-slate-900/60">
                         <td colSpan={9} className="px-6 py-3">
+                          {/* Line items for multi-item orders */}
+                          {t.items && t.items.length > 0 && (
+                            <div className="mb-4">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Line Items
+                              </span>
+                              <table className="mt-1 w-full text-xs border border-slate-800 rounded-lg overflow-hidden">
+                                <thead>
+                                  <tr className="bg-slate-800/60">
+                                    <th className="text-left px-3 py-1.5 text-slate-400 font-medium">Product</th>
+                                    <th className="text-center px-3 py-1.5 text-slate-400 font-medium w-16">Qty</th>
+                                    <th className="text-right px-3 py-1.5 text-slate-400 font-medium w-24">Price</th>
+                                    <th className="text-right px-3 py-1.5 text-slate-400 font-medium w-24">Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/40">
+                                  {t.items.map((item, idx) => (
+                                    <tr key={idx}>
+                                      <td className="px-3 py-1.5 text-slate-300 font-medium">
+                                        {item.product_name}
+                                        {item.custom_fields && Object.keys(item.custom_fields).length > 0 && (
+                                          <div className="mt-0.5 space-y-0.5">
+                                            {Object.entries(item.custom_fields).map(([key, val]) => (
+                                              <div key={key} className="text-[10px] text-slate-500">
+                                                <span className="text-slate-600">{key}:</span>{" "}
+                                                <span>{val}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-1.5 text-center text-slate-400">
+                                        {item.quantity}
+                                      </td>
+                                      <td className="px-3 py-1.5 text-right text-slate-400 font-mono">
+                                        ৳{item.price.toLocaleString()}
+                                      </td>
+                                      <td className="px-3 py-1.5 text-right text-emerald-400 font-semibold font-mono">
+                                        ৳{item.subtotal.toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t border-slate-700">
+                                    <td colSpan={3} className="px-3 py-1.5 text-right text-slate-400 font-bold text-[11px]">
+                                      Total
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right text-emerald-400 font-bold font-mono">
+                                      ৳{parseFloat(t.price).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          )}
+
+                          {/* Seller notes */}
+                          {t.seller_notes && t.seller_notes.trim() && (
+                            <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                                Notes for Seller
+                              </span>
+                              <p className="mt-1 text-xs text-slate-300 whitespace-pre-wrap">
+                                {t.seller_notes}
+                              </p>
+                            </div>
+                          )}
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {/* Account credentials — parsed JSON or raw string */}
                             {hasCredentials && (
@@ -522,7 +617,7 @@ export default function OrdersPage() {
                               </div>
                             )}
 
-                            {!hasCredentials && !hasCustomFields && (
+                            {!hasCredentials && !hasCustomFields && !(t.seller_notes && t.seller_notes.trim()) && (
                               <p className="text-xs text-slate-600">
                                 No additional details
                               </p>

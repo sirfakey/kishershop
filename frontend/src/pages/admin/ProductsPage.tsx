@@ -72,6 +72,20 @@ export default function ProductsPage() {
   const [sku, setSku] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [description, setDescription] = useState("");
+
+  // ── Custom checkout fields builder state ──
+  interface CheckoutFieldDraft {
+    name: string;
+    label: string;
+    type: "text" | "select" | "textarea";
+    placeholder: string;
+    required: boolean;
+    options: { value: string; text: string }[];
+  }
+  const [checkoutFields, setCheckoutFields] = useState<CheckoutFieldDraft[]>([]);
+  const [enableSellerNotes, setEnableSellerNotes] = useState(false);
+  const [customCheckoutHtml, setCustomCheckoutHtml] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
@@ -98,6 +112,9 @@ export default function ProductsPage() {
   const [editType, setEditType] = useState("gift-cards");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editCheckoutFields, setEditCheckoutFields] = useState<CheckoutFieldDraft[]>([]);
+  const [editEnableSellerNotes, setEditEnableSellerNotes] = useState(false);
+  const [editCustomCheckoutHtml, setEditCustomCheckoutHtml] = useState("");
   const [editError, setEditError] = useState("");
 
   const fetchData = () => {
@@ -218,6 +235,9 @@ export default function ProductsPage() {
       setCustomFormCode("");
       setSku("");
       setImageUrl("");
+      setCheckoutFields([]);
+      setEnableSellerNotes(false);
+      setCustomCheckoutHtml("");
 
       // Refresh product list
       apiJson<Product[]>("/api/admin/products", token).then(setProducts);
@@ -237,6 +257,9 @@ export default function ProductsPage() {
     setEditDiscountPercentage(product.discount_percentage?.toString() ?? "");
     setEditType(product.type);
     setEditImageUrl(product.image_url ?? "");
+    setEditCheckoutFields((product as any).custom_checkout_fields ?? []);
+    setEditEnableSellerNotes((product as any).enable_seller_notes ?? false);
+    setEditCustomCheckoutHtml((product as any).custom_checkout_html ?? "");
     setEditError("");
   };
 
@@ -261,6 +284,9 @@ export default function ProductsPage() {
         discount_percentage: intOrNull(editDiscountPercentage),
         type: editType,
         image_url: editImageUrl || null,
+        custom_checkout_fields: editCheckoutFields.length > 0 ? editCheckoutFields : null,
+        enable_seller_notes: editEnableSellerNotes,
+        custom_checkout_html: editCustomCheckoutHtml.trim() || null,
       };
 
       const data = await apiJson<{ message: string }>(
@@ -453,27 +479,282 @@ export default function ProductsPage() {
               aspectClass="aspect-video"
             />
 
-            {/* ── Custom Checkout Form Code ── */}
+            {/* ── Custom Checkout Form Code (Legacy) ── */}
+            <details className="group">
+              <summary className="text-xs font-bold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-slate-400 select-none">
+                Legacy HTML Template Code <span className="text-slate-600 normal-case font-normal">(deprecated, collapsed)</span>
+              </summary>
+              <div className="mt-2">
+                <textarea
+                  value={customFormCode}
+                  onChange={(e) => setCustomFormCode(e.target.value)}
+                  rows={6}
+                  spellCheck={false}
+                  placeholder={EXAMPLE_CODE}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-600 resize-y"
+                />
+              </div>
+            </details>
+
+            {/* ── Structured Custom Checkout Fields Builder ── */}
+            <div className="space-y-3 border-t border-slate-800 pt-4">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Custom Checkout Fields
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCheckoutFields((prev) => [
+                      ...prev,
+                      { name: "", label: "", type: "text", placeholder: "", required: false, options: [] },
+                    ])
+                  }
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                >
+                  + Add Field
+                </button>
+              </div>
+
+              {checkoutFields.length === 0 ? (
+                <p className="text-xs text-slate-600 italic">
+                  No custom fields defined. The checkout form will show only default fields.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {checkoutFields.map((field, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-lg border border-slate-800 bg-slate-950 p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Field {idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCheckoutFields((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="text-[11px] text-rose-500 hover:text-rose-400 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Name (key)
+                          </label>
+                          <input
+                            value={field.name}
+                            onChange={(e) => {
+                              const next = [...checkoutFields];
+                              next[idx] = { ...next[idx], name: e.target.value };
+                              setCheckoutFields(next);
+                            }}
+                            placeholder="player_id"
+                            className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Label
+                          </label>
+                          <input
+                            value={field.label}
+                            onChange={(e) => {
+                              const next = [...checkoutFields];
+                              next[idx] = { ...next[idx], label: e.target.value };
+                              setCheckoutFields(next);
+                            }}
+                            placeholder="Player ID"
+                            className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Type
+                          </label>
+                          <select
+                            value={field.type}
+                            onChange={(e) => {
+                              const next = [...checkoutFields];
+                              next[idx] = {
+                                ...next[idx],
+                                type: e.target.value as CheckoutFieldDraft["type"],
+                                options: e.target.value === "select" ? next[idx].options : [],
+                              };
+                              setCheckoutFields(next);
+                            }}
+                            className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500"
+                          >
+                            <option value="text">Text</option>
+                            <option value="select">Select</option>
+                            <option value="textarea">Textarea</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Placeholder
+                          </label>
+                          <input
+                            value={field.placeholder}
+                            onChange={(e) => {
+                              const next = [...checkoutFields];
+                              next[idx] = { ...next[idx], placeholder: e.target.value };
+                              setCheckoutFields(next);
+                            }}
+                            placeholder="e.g. Enter value"
+                            className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                          />
+                        </div>
+                        <div className="flex items-end pb-1">
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <div className="relative">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) => {
+                                  const next = [...checkoutFields];
+                                  next[idx] = { ...next[idx], required: e.target.checked };
+                                  setCheckoutFields(next);
+                                }}
+                                className="sr-only"
+                              />
+                              <div
+                                className={`w-7 h-4 rounded-full transition-colors ${field.required ? "bg-indigo-600" : "bg-slate-700"}`}
+                              >
+                                <div
+                                  className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${field.required ? "translate-x-3.5" : "translate-x-0.5"}`}
+                                />
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">
+                              Required
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {field.type === "select" && (
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                            Options <span className="text-slate-600 normal-case font-normal">(value, text per line)</span>
+                          </label>
+                          <div className="space-y-1">
+                            {(field.options || []).map((opt, oi) => (
+                              <div key={oi} className="flex gap-1">
+                                <input
+                                  value={opt.value}
+                                  onChange={(e) => {
+                                    const next = [...checkoutFields];
+                                    const opts = [...(next[idx].options || [])];
+                                    opts[oi] = { ...opts[oi], value: e.target.value };
+                                    next[idx] = { ...next[idx], options: opts };
+                                    setCheckoutFields(next);
+                                  }}
+                                  placeholder="value"
+                                  className="flex-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                                />
+                                <input
+                                  value={opt.text}
+                                  onChange={(e) => {
+                                    const next = [...checkoutFields];
+                                    const opts = [...(next[idx].options || [])];
+                                    opts[oi] = { ...opts[oi], text: e.target.value };
+                                    next[idx] = { ...next[idx], options: opts };
+                                    setCheckoutFields(next);
+                                  }}
+                                  placeholder="display text"
+                                  className="flex-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = [...checkoutFields];
+                                    next[idx] = {
+                                      ...next[idx],
+                                      options: (next[idx].options || []).filter((_, i) => i !== oi),
+                                    };
+                                    setCheckoutFields(next);
+                                  }}
+                                  className="text-[10px] text-rose-500 hover:text-rose-400 px-1 transition-colors"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = [...checkoutFields];
+                                next[idx] = {
+                                  ...next[idx],
+                                  options: [...(next[idx].options || []), { value: "", text: "" }],
+                                };
+                                setCheckoutFields(next);
+                              }}
+                              className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                            >
+                              + Add Option
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Seller Notes Toggle ── */}
+            <div className="flex items-center gap-3 border-t border-slate-800 pt-4">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={enableSellerNotes}
+                    onChange={(e) => setEnableSellerNotes(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div
+                    className={`w-9 h-5 rounded-full transition-colors ${enableSellerNotes ? "bg-indigo-600" : "bg-slate-700"}`}
+                  >
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${enableSellerNotes ? "translate-x-[1.125rem]" : "translate-x-0.5"}`}
+                    />
+                  </div>
+                </div>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Enable Seller Notes
+                </span>
+              </label>
+              <span className="text-[11px] text-slate-600">
+                Show "Notes for Seller" section at checkout for this product
+              </span>
+            </div>
+
+            {/* ── Custom Checkout HTML ── */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Custom Checkout Form HTML/Template Code{" "}
+                Custom Checkout HTML{" "}
                 <span className="text-slate-600 normal-case font-normal">(optional)</span>
               </label>
               <textarea
-                value={customFormCode}
-                onChange={(e) => setCustomFormCode(e.target.value)}
-                rows={8}
+                value={customCheckoutHtml}
+                onChange={(e) => setCustomCheckoutHtml(e.target.value)}
+                rows={5}
                 spellCheck={false}
-                placeholder={EXAMPLE_CODE}
+                placeholder={'<div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-sm text-amber-300">\n  <strong>⚠ Important:</strong> Please ensure your account details are correct before checking out.\n</div>'}
                 className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-600 resize-y"
               />
               <p className="text-[11px] text-slate-600 mt-1.5">
-                Define custom input fields using HTML. Each element's{" "}
-                <code className="text-slate-500">name</code> attribute becomes
-                the key in the submitted JSON. The{" "}
-                <code className="text-slate-500">label</code> attribute is
-                displayed above the input. Leave empty for default single-field
-                checkout.
+                Raw HTML injected above the custom checkout fields. Use for warnings, instructions, or banners.
               </p>
             </div>
 
@@ -771,6 +1052,268 @@ export default function ProductsPage() {
                 label="Product Image"
                 aspectClass="aspect-video"
               />
+
+              {/* ── Structured Custom Checkout Fields Builder ── */}
+              <div className="space-y-3 border-t border-slate-800 pt-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Custom Checkout Fields
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditCheckoutFields((prev) => [
+                        ...prev,
+                        { name: "", label: "", type: "text", placeholder: "", required: false, options: [] },
+                      ])
+                    }
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                  >
+                    + Add Field
+                  </button>
+                </div>
+
+                {editCheckoutFields.length === 0 ? (
+                  <p className="text-xs text-slate-600 italic">
+                    No custom fields defined. The checkout form will show only default fields.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {editCheckoutFields.map((field, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-slate-800 bg-slate-950 p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            Field {idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditCheckoutFields((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            className="text-[11px] text-rose-500 hover:text-rose-400 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                              Name (key)
+                            </label>
+                            <input
+                              value={field.name}
+                              onChange={(e) => {
+                                const next = [...editCheckoutFields];
+                                next[idx] = { ...next[idx], name: e.target.value };
+                                setEditCheckoutFields(next);
+                              }}
+                              placeholder="player_id"
+                              className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                              Label
+                            </label>
+                            <input
+                              value={field.label}
+                              onChange={(e) => {
+                                const next = [...editCheckoutFields];
+                                next[idx] = { ...next[idx], label: e.target.value };
+                                setEditCheckoutFields(next);
+                              }}
+                              placeholder="Player ID"
+                              className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                              Type
+                            </label>
+                            <select
+                              value={field.type}
+                              onChange={(e) => {
+                                const next = [...editCheckoutFields];
+                                next[idx] = {
+                                  ...next[idx],
+                                  type: e.target.value as CheckoutFieldDraft["type"],
+                                  options: e.target.value === "select" ? next[idx].options : [],
+                                };
+                                setEditCheckoutFields(next);
+                              }}
+                              className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500"
+                            >
+                              <option value="text">Text</option>
+                              <option value="select">Select</option>
+                              <option value="textarea">Textarea</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                              Placeholder
+                            </label>
+                            <input
+                              value={field.placeholder}
+                              onChange={(e) => {
+                                const next = [...editCheckoutFields];
+                                next[idx] = { ...next[idx], placeholder: e.target.value };
+                                setEditCheckoutFields(next);
+                              }}
+                              placeholder="e.g. Enter value"
+                              className="w-full rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                            />
+                          </div>
+                          <div className="flex items-end pb-1">
+                            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                              <div className="relative">
+                                <input
+                                  type="checkbox"
+                                  checked={field.required}
+                                  onChange={(e) => {
+                                    const next = [...editCheckoutFields];
+                                    next[idx] = { ...next[idx], required: e.target.checked };
+                                    setEditCheckoutFields(next);
+                                  }}
+                                  className="sr-only"
+                                />
+                                <div
+                                  className={`w-7 h-4 rounded-full transition-colors ${field.required ? "bg-indigo-600" : "bg-slate-700"}`}
+                                >
+                                  <div
+                                    className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${field.required ? "translate-x-3.5" : "translate-x-0.5"}`}
+                                  />
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                Required
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {field.type === "select" && (
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                              Options <span className="text-slate-600 normal-case font-normal">(value, text per line)</span>
+                            </label>
+                            <div className="space-y-1">
+                              {(field.options || []).map((opt, oi) => (
+                                <div key={oi} className="flex gap-1">
+                                  <input
+                                    value={opt.value}
+                                    onChange={(e) => {
+                                      const next = [...editCheckoutFields];
+                                      const opts = [...(next[idx].options || [])];
+                                      opts[oi] = { ...opts[oi], value: e.target.value };
+                                      next[idx] = { ...next[idx], options: opts };
+                                      setEditCheckoutFields(next);
+                                    }}
+                                    placeholder="value"
+                                    className="flex-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                                  />
+                                  <input
+                                    value={opt.text}
+                                    onChange={(e) => {
+                                      const next = [...editCheckoutFields];
+                                      const opts = [...(next[idx].options || [])];
+                                      opts[oi] = { ...opts[oi], text: e.target.value };
+                                      next[idx] = { ...next[idx], options: opts };
+                                      setEditCheckoutFields(next);
+                                    }}
+                                    placeholder="display text"
+                                    className="flex-1 rounded-md border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-white outline-none focus:border-indigo-500 placeholder:text-slate-700"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...editCheckoutFields];
+                                      next[idx] = {
+                                        ...next[idx],
+                                        options: (next[idx].options || []).filter((_, i) => i !== oi),
+                                      };
+                                      setEditCheckoutFields(next);
+                                    }}
+                                    className="text-[10px] text-rose-500 hover:text-rose-400 px-1 transition-colors"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = [...editCheckoutFields];
+                                  next[idx] = {
+                                    ...next[idx],
+                                    options: [...(next[idx].options || []), { value: "", text: "" }],
+                                  };
+                                  setEditCheckoutFields(next);
+                                }}
+                                className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                              >
+                                + Add Option
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Seller Notes Toggle ── */}
+              <div className="flex items-center gap-3 border-t border-slate-800 pt-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={editEnableSellerNotes}
+                      onChange={(e) => setEditEnableSellerNotes(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div
+                      className={`w-9 h-5 rounded-full transition-colors ${editEnableSellerNotes ? "bg-indigo-600" : "bg-slate-700"}`}
+                    >
+                      <div
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${editEnableSellerNotes ? "translate-x-[1.125rem]" : "translate-x-0.5"}`}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Enable Seller Notes
+                  </span>
+                </label>
+                <span className="text-[11px] text-slate-600">
+                  Show "Notes for Seller" section at checkout
+                </span>
+              </div>
+
+              {/* ── Custom Checkout HTML ── */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Custom Checkout HTML{" "}
+                  <span className="text-slate-600 normal-case font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={editCustomCheckoutHtml}
+                  onChange={(e) => setEditCustomCheckoutHtml(e.target.value)}
+                  rows={5}
+                  spellCheck={false}
+                  placeholder={'<div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 text-sm text-amber-300">\n  <strong>⚠ Important:</strong> Please ensure your account details are correct before checking out.\n</div>'}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-mono text-white outline-none focus:border-indigo-500 placeholder:text-slate-600 resize-y"
+                />
+                <p className="text-[11px] text-slate-600 mt-1.5">
+                  Raw HTML injected above the custom checkout fields at checkout.
+                </p>
+              </div>
 
               {/* Error */}
               {editError && (

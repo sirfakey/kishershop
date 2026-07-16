@@ -252,7 +252,7 @@ export default function MarketplaceHeader() {
           </div>
 
           {/* Utility icons */}
-          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          <div className="relative flex shrink-0 items-center gap-0.5 sm:gap-1">
             <IconButton
               label="Trade / Exchange"
               onClick={() => setTradeModalOpen(true)}
@@ -260,7 +260,7 @@ export default function MarketplaceHeader() {
               <ArrowLeftRight className="h-5 w-5" />
             </IconButton>
 
-            <div className="relative">
+            <div>
               <IconButton
                 label="Notifications"
                 onClick={() => setNotifOpen((v) => !v)}

@@ -1,12 +1,22 @@
 import { useState, useEffect, useRef } from "react";
 import { useCustomerAuth } from "../../context/CustomerAuthContext";
 import { apiJson } from "../../lib/api";
+import { useSEO } from "../../lib/useSEO";
 import type { CustomerTransaction, Trade } from "../../data/categories";
-import { LogOut, Coins, ShoppingBag, User, Mail, ShieldCheck, ArrowLeft, ArrowLeftRight } from "lucide-react";
+import { LogOut, Coins, ShoppingBag, User, Mail, ShieldCheck, RefreshCw, ArrowLeftRight } from "lucide-react";
+
+const VERIFICATION_EMAIL_KEY = "kishershop_pending_verification_email";
 
 export default function AccountPage() {
-  const { user, token, isAuthenticated, loading, login, register, verifyEmail, logout } =
+  const { user, token, isAuthenticated, loading, login, register, verifyEmail, resendVerification, logout } =
     useCustomerAuth();
+
+  useSEO({
+    title: "My Account",
+    description: "Manage your Kisher.Shop account — view purchase history, loyalty points, and trade requests.",
+    path: "/account",
+    noindex: true,
+  });
 
   // ── Tab switching (unauthenticated) ──────────────────────────────
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -31,6 +41,15 @@ export default function AccountPage() {
   // ── Trade requests ──────────────────────────────────────────────
   const [trades, setTrades] = useState<Trade[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
+
+  // Restore pending verification from localStorage on mount (survives refresh)
+  useEffect(() => {
+    const stored = localStorage.getItem(VERIFICATION_EMAIL_KEY);
+    if (stored && !isAuthenticated) {
+      setVerificationEmail(stored);
+      setPendingVerification(true);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated && token) {
@@ -60,7 +79,16 @@ export default function AccountPage() {
     try {
       await login(email.trim(), password);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Login failed.");
+      const msg = err instanceof Error ? err.message : "Login failed.";
+      if (msg.startsWith("VERIFICATION_REQUIRED:")) {
+        const vEmail = msg.split(":")[1];
+        setVerificationEmail(vEmail);
+        setPendingVerification(true);
+        localStorage.setItem(VERIFICATION_EMAIL_KEY, vEmail);
+        setFormError("");
+      } else {
+        setFormError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -82,6 +110,7 @@ export default function AccountPage() {
       const registeredEmail = await register(name.trim(), email.trim(), password);
       setVerificationEmail(registeredEmail);
       setPendingVerification(true);
+      localStorage.setItem(VERIFICATION_EMAIL_KEY, registeredEmail);
       setFormError("");
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Registration failed.");
@@ -138,6 +167,7 @@ export default function AccountPage() {
     try {
       await verifyEmail(verificationEmail, fullCode);
       setPendingVerification(false);
+      localStorage.removeItem(VERIFICATION_EMAIL_KEY);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Verification failed.");
     } finally {
@@ -145,10 +175,19 @@ export default function AccountPage() {
     }
   };
 
-  const handleBackToRegister = () => {
-    setPendingVerification(false);
-    setCodeDigits(["", "", "", "", "", ""]);
+  const handleResendCode = async () => {
+    if (!verificationEmail) return;
+    setSubmitting(true);
     setFormError("");
+    try {
+      await resendVerification(verificationEmail);
+      setCodeDigits(["", "", "", "", "", ""]);
+      codeRefs.current[0]?.focus();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to resend code.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -189,6 +228,9 @@ export default function AccountPage() {
                   We sent a 6-digit code to{" "}
                   <strong className="text-slate-200">{verificationEmail}</strong>
                 </p>
+                <p className="text-xs text-slate-600 mt-2">
+                  You must verify your email before you can log in.
+                </p>
               </div>
 
               {/* 6-digit code input */}
@@ -228,11 +270,12 @@ export default function AccountPage() {
 
               <button
                 type="button"
-                onClick={handleBackToRegister}
-                className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
+                onClick={handleResendCode}
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
               >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Back to registration
+                <RefreshCw className={`h-3.5 w-3.5 ${submitting ? "animate-spin" : ""}`} />
+                {submitting ? "Sending..." : "Resend Code"}
               </button>
             </div>
           ) : (

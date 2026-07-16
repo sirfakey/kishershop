@@ -5,8 +5,13 @@ import paramiko
 import os
 import stat
 import tempfile
+import time
 
-HOST = "157.173.209.175"
+# Updated 2026-07-16: site migrated US → India. Live server now 145.79.211.206
+# (kisher.shop DNS points here). The old US box 157.173.209.175 still accepts
+# the SSH password but its shell is /sbin/nologin, so SFTP silently fails and
+# uploads there never reach the live site. See memory: server-migration-india.
+HOST = "145.79.211.206"
 PORT = 65002
 USER = "u954364410"
 PASSWORD = "R=s0^Y*H8"
@@ -34,28 +39,54 @@ BACKEND_FILES = [
     "app/Mail/SendVerificationCode.php",
     "app/Mail/TradeStatusNotification.php",
     "routes/api.php",
+    "routes/web.php",
     "bootstrap/app.php",
     "resources/views/mail/verification-code.blade.php",
+    "resources/views/mail/verification-code-text.blade.php",
     "resources/views/mail/trade-status.blade.php",
+    "resources/views/mail/trade-status-text.blade.php",
     "database/seeders/SettingSeeder.php",
     "database/seeders/AdminSeeder.php",
 ]
 
 NEW_MIGRATIONS = [
+    "2026_07_12_000010_add_verification_code_to_users_table.php",
     "2026_07_14_000004_add_gateway_to_transactions.php",
     "2026_07_14_000005_add_discount_percentage_to_products.php",
     "2026_07_14_000006_add_is_banned_to_users.php",
     "2026_07_14_000007_add_description_to_products.php",
     "2026_07_14_000008_add_classification_to_product_groups.php",
+    "2026_07_16_000001_make_original_price_nullable_on_products.php",
 ]
 
 
-def connect():
-    transport = paramiko.Transport((HOST, PORT))
-    transport.connect(username=USER, password=PASSWORD)
-    transport.set_keepalive(30)
-    sftp = paramiko.SFTPClient.from_transport(transport)
-    return sftp, transport
+def connect(retries=5, backoff=4):
+    """Connect SSH+SFTP, retrying on transient 'EOF during negotiation'.
+
+    The SFTP subsystem on this Hostinger box occasionally drops the channel
+    right after SSH auth succeeds (paramiko raises `EOF during negotiation`).
+    Re-dialing SSH usually clears it, so retry a few times with backoff.
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        transport = None
+        try:
+            transport = paramiko.Transport((HOST, PORT))
+            transport.connect(username=USER, password=PASSWORD)
+            transport.set_keepalive(30)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            return sftp, transport
+        except Exception as e:
+            last_err = e
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+            print(f"  connect attempt {attempt}/{retries} failed: {e}")
+            if attempt < retries:
+                time.sleep(backoff * attempt)
+    raise last_err
 
 
 def mkdir_p(sftp, remote_dir):
@@ -159,6 +190,9 @@ def main():
 
   # Route Laravel health check
   RewriteRule ^up$ index.php [L,QSA]
+
+  # Route dynamic sitemap to Laravel (generated from DB categories)
+  RewriteRule ^sitemap\\.xml$ index.php [L,QSA]
 
   # SPA: serve index.html for all other non-file/dir requests
   RewriteRule ^index\\.html$ - [L]

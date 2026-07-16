@@ -60,6 +60,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Keep the browser tab icon (favicon) in sync with the admin-set logo.
+  // index.html ships a static /favicon.svg fallback for first paint (before
+  // JS loads); once settings resolve we swap the icon link to the logo URL.
+  // The type attribute is removed so the browser sniffs the actual image
+  // format (uploads may be PNG/JPG, not necessarily SVG).
+  useEffect(() => {
+    if (!settings.logoUrl) return;
+    let link = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = settings.logoUrl;
+    link.removeAttribute("type");
+  }, [settings.logoUrl]);
+
   return (
     <SettingsContext.Provider
       value={{

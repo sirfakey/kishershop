@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\SendVerificationCode;
 use App\Models\Trade;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class CustomerAuthController extends Controller
@@ -24,14 +26,28 @@ class CustomerAuthController extends Controller
                 'password' => 'required|string|min:6',
             ]);
 
+            // Generate a random 6-digit verification code
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
             $user = User::create([
-                'name'     => $validated['name'],
-                'email'    => $validated['email'],
-                'password' => Hash::make($validated['password']),
+                'name'              => $validated['name'],
+                'email'             => $validated['email'],
+                'password'          => Hash::make($validated['password']),
+                'verification_code' => $code,
             ]);
 
+            // Send verification email
+            try {
+                Mail::to($user->email)->send(new SendVerificationCode($code, $user->name));
+            } catch (\Exception $e) {
+                Log::error('Failed to send verification email: ' . $e->getMessage(), [
+                    'email' => $user->email,
+                ]);
+                // Don't fail registration — the code is still stored and can be resent
+            }
+
             return response()->json([
-                'message' => 'Account created successfully. Please verify your email.',
+                'message' => 'Account created successfully. Please check your email for the verification code.',
                 'email'   => $validated['email'],
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -68,6 +84,27 @@ class CustomerAuthController extends Controller
                 return response()->json([
                     'message' => 'Your account has been suspended. Please contact support.',
                 ], 403);
+            }
+
+            // If email is not verified, generate a new code and send it
+            if (! $user->email_verified_at) {
+                $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                $user->verification_code = $code;
+                $user->save();
+
+                try {
+                    Mail::to($user->email)->send(new SendVerificationCode($code, $user->name));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send verification email on login: ' . $e->getMessage(), [
+                        'email' => $user->email,
+                    ]);
+                }
+
+                return response()->json([
+                    'message'              => 'Email not verified. A new verification code has been sent.',
+                    'requires_verification' => true,
+                    'email'                => $user->email,
+                ], 200);
             }
 
             $token = $user->createToken('customer-token')->plainTextToken;
@@ -112,6 +149,18 @@ class CustomerAuthController extends Controller
                     'message' => 'Your account has been suspended. Please contact support.',
                 ], 403);
             }
+
+            // Verify the submitted code matches the stored code
+            if (! $user->verification_code || $user->verification_code !== $validated['code']) {
+                return response()->json([
+                    'message' => 'Invalid verification code. Please check your email and try again.',
+                ], 422);
+            }
+
+            // Mark email as verified and clear the code
+            $user->verification_code = null;
+            $user->email_verified_at = now();
+            $user->save();
 
             $token = $user->createToken('customer-token')->plainTextToken;
 
@@ -217,6 +266,51 @@ class CustomerAuthController extends Controller
             Log::error('Trade history error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Failed to load trade requests.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Resend verification code to an unverified email.
+     */
+    public function resendVerification(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email|exists:users,email',
+            ]);
+
+            $user = User::where('email', $validated['email'])->first();
+
+            // No need to resend if already verified
+            if ($user->email_verified_at) {
+                return response()->json([
+                    'message' => 'Email is already verified. You can log in.',
+                ], 200);
+            }
+
+            // Generate a fresh code
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $user->verification_code = $code;
+            $user->save();
+
+            try {
+                Mail::to($user->email)->send(new SendVerificationCode($code, $user->name));
+            } catch (\Exception $e) {
+                Log::error('Failed to resend verification email: ' . $e->getMessage(), [
+                    'email' => $user->email,
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'A new verification code has been sent to your email.',
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Resend verification error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to resend code. Please try again.',
             ], 500);
         }
     }

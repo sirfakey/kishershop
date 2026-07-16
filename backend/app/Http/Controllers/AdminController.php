@@ -141,10 +141,41 @@ class AdminController extends Controller
         }
     }
 
+    /**
+     * Coerce the optional discount fields on the request into a clean form:
+     * any of absent / null / empty-string / whitespace-only become explicitly
+     * null, so validation's `nullable` rule short-circuits the `numeric`/
+     * `integer` checks instead of rejecting "". This is what makes discounts
+     * genuinely optional end-to-end — the admin can leave either field blank.
+     */
+    private function normalizeOptionalDiscountFields(Request $request): void
+    {
+        foreach (['original_price', 'discount_percentage'] as $field) {
+            if (! $request->has($field)) {
+                continue;
+            }
+            $value = $request->input($field);
+            // An empty or whitespace-only string becomes null so the `nullable`
+            // validation rule skips the numeric/integer check (otherwise "" gets
+            // rejected as "must be a number"). JSON null and real values pass
+            // through untouched.
+            if (is_string($value) && trim($value) === '') {
+                $request->merge([$field => null]);
+            }
+        }
+    }
+
     // 4. Create a New Digital Product
     public function storeProduct(Request $request)
     {
         try {
+            // Discounts are 100% optional: treat absent / empty-string /
+            // whitespace-only original_price & discount_percentage as "no
+            // discount" (null) before validation runs. This keeps the rules
+            // below (nullable|numeric) clean regardless of how the client
+            // encodes an empty field (null, "", or omitted key).
+            $this->normalizeOptionalDiscountFields($request);
+
             $validated = $request->validate([
                 'name'                => 'required|string|max:255',
                 'description'         => 'nullable|string',
@@ -251,6 +282,10 @@ class AdminController extends Controller
         try {
             $product = Product::findOrFail($id);
 
+            // Make discounts optional on edit too: empty/missing original_price
+            // or discount_percentage become null instead of failing validation.
+            $this->normalizeOptionalDiscountFields($request);
+
             $validated = $request->validate([
                 'name'                => 'sometimes|required|string|max:255',
                 'description'         => 'nullable|string',
@@ -264,9 +299,17 @@ class AdminController extends Controller
                 'image_url'           => 'nullable|string|max:2048',
             ]);
 
-            // Section 2: original_price must be > price when provided
+            // Section 2: original_price must be > price when PROVIDED. Crucially,
+            // if the admin explicitly sent original_price (even as null — e.g.,
+            // cleared the field to drop the discount) honour that explicit null
+            // rather than falling back to the stale stored value; only the absent
+            // key falls back. This lets admins raise the sale price simply by
+            // clearing the "Original Price" field instead of being forced to
+            // keep a discount on the product.
             $checkPrice = $validated['price'] ?? $product->price;
-            $checkOriginal = $validated['original_price'] ?? $product->original_price;
+            $checkOriginal = array_key_exists('original_price', $validated)
+                ? $validated['original_price']
+                : $product->original_price;
             if (!empty($checkOriginal) && (float) $checkOriginal <= (float) $checkPrice) {
                 return response()->json([
                     'message' => 'The original price must be greater than the active sale price.',

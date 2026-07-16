@@ -10,6 +10,7 @@ interface CustomerAuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<string>;
   verifyEmail: (email: string, code: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -67,7 +68,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await apiJson<{ message: string; token: string; user: CustomerUser }>(
+    const data = await apiJson<{
+      message: string;
+      token?: string;
+      user?: CustomerUser;
+      requires_verification?: boolean;
+      email?: string;
+    }>(
       "/api/login",
       null,
       {
@@ -75,6 +82,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, password }),
       },
     );
+
+    if (data.requires_verification) {
+      throw new Error("VERIFICATION_REQUIRED:" + (data.email || email));
+    }
 
     if (!data.token || !data.user) {
       throw new Error("Login failed: incomplete response from server.");
@@ -134,6 +145,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, [token]);
 
+  const resendVerification = useCallback(async (email: string) => {
+    await apiJson("/api/resend-verification", null, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }, []);
+
   const refreshUser = useCallback(async () => {
     if (!token) return;
     try {
@@ -155,6 +173,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         verifyEmail,
+        resendVerification,
         logout,
         refreshUser,
       }}

@@ -25,6 +25,7 @@ class User extends Authenticatable
         'password',
         'points',
         'is_banned',
+        'verification_code',
     ];
 
     /**

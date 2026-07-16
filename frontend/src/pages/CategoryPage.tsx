@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { SingleCategoryResponse, Product } from "../data/categories";
 import { apiJson } from "../lib/api";
+import { useSEO } from "../lib/useSEO";
+import JsonLd from "../components/JsonLd";
 import CheckoutModal from "../components/CheckoutModal";
 
 // Master dictionary for matching backend keys to pretty frontend tab names
@@ -24,6 +26,13 @@ export default function CategoryPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
+
+  // Dynamic SEO for this category page
+  const seoTitle = category ? `${category.name} Marketplace` : undefined;
+  const seoDescription = category
+    ? `Buy ${category.name} in Bangladesh — game keys, gift cards, accounts, currency, and boosting. Instant delivery with bKash & Nagad.`
+    : undefined;
+  useSEO({ title: seoTitle, description: seoDescription, path: `/category/${slug}` });
 
   useEffect(() => {
     if (urlType) {
@@ -79,6 +88,23 @@ export default function CategoryPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <JsonLd
+        id="category"
+        data={{
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          name: `${category.name} Marketplace — Kisher.Shop`,
+          url: `https://kisher.shop/category/${category.slug}`,
+          description: seoDescription,
+          breadcrumb: {
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Home", item: "https://kisher.shop/" },
+              { "@type": "ListItem", position: 2, name: category.name, item: `https://kisher.shop/category/${category.slug}` },
+            ],
+          },
+        }}
+      />
       {/* Top Banner & Header */}
       <div className="px-6 py-8 border-b border-slate-900 bg-slate-900/20">
         <div className="mx-auto max-w-7xl">
@@ -174,7 +200,7 @@ export default function CategoryPage() {
                       <span className="text-xl font-black text-teal-400">
                         ৳{currentPrice.toLocaleString()}
                       </span>
-                      {originalPrice && originalPrice > 0 && (
+                      {originalPrice && originalPrice > currentPrice && (
                         <span className="text-xs text-slate-500 line-through">
                           ৳{originalPrice.toLocaleString()}
                         </span>

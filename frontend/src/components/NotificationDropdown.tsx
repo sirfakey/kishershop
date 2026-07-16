@@ -50,7 +50,7 @@ export default function NotificationDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-2xl z-40 overflow-hidden"
+      className="absolute right-0 top-full mt-2 max-w-[calc(100vw-2rem)] w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-2xl z-40 overflow-hidden"
     >
       {/* Header */}
       <div className="border-b border-slate-800 px-4 py-3">

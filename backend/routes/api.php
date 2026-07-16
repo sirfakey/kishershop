@@ -26,6 +26,7 @@ Route::post('/coupon/validate', [CouponController::class, 'validateCoupon']);
 Route::post('/register', [CustomerAuthController::class, 'register']);
 Route::post('/login', [CustomerAuthController::class, 'login']);
 Route::post('/verify-email', [CustomerAuthController::class, 'verifyEmail']);
+Route::post('/resend-verification', [CustomerAuthController::class, 'resendVerification']);
 // ─── Protected Customer Routes ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [CustomerAuthController::class, 'me']);

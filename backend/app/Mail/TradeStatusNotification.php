@@ -41,6 +41,7 @@ class TradeStatusNotification extends Mailable
     {
         return new Content(
             view: 'mail.trade-status',
+            text: 'mail.trade-status-text',
             with: [
                 'status'           => $this->status,
                 'tradeDescription' => $this->tradeDescription,

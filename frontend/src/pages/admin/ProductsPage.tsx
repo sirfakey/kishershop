@@ -40,6 +40,24 @@ const EXAMPLE_CODE = `<input name="discord_username" label="Discord Username" pl
   <option value="global">Global</option>
 </select>`;
 
+/**
+ * Coerce a discount-related form input into a clean value for the API.
+ * Empty / whitespace / non-finite / non-positive inputs become `null` — the
+ * backend treats null as "no discount" — instead of sending NaN or 0. This
+ * makes the "Original Price" and "Discount %" fields genuinely optional.
+ */
+function numOrNull(input: string): number | null {
+  if (input.trim() === "") return null;
+  const n = parseFloat(input);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Like {@link numOrNull} but rounds to an integer (discount_percentage, 1-99). */
+function intOrNull(input: string): number | null {
+  const n = numOrNull(input);
+  return n === null ? null : Math.round(n);
+}
+
 export default function ProductsPage() {
   const { token } = useAuth();
 
@@ -179,8 +197,8 @@ export default function ProductsPage() {
             name,
             description: description.trim() || null,
             price: parseFloat(price),
-            original_price: originalPrice ? parseFloat(originalPrice) : null,
-            discount_percentage: discountPercentage ? parseInt(discountPercentage) : null,
+            original_price: numOrNull(originalPrice),
+            discount_percentage: intOrNull(discountPercentage),
             type,
             product_group_id: parseInt(productGroupId),
             custom_form_code: customFormCode.trim() || null,
@@ -239,8 +257,8 @@ export default function ProductsPage() {
         name: editName.trim(),
         description: editDescription.trim() || null,
         price: parseFloat(editPrice),
-        original_price: editOriginalPrice ? parseFloat(editOriginalPrice) : null,
-        discount_percentage: editDiscountPercentage ? parseInt(editDiscountPercentage) : null,
+        original_price: numOrNull(editOriginalPrice),
+        discount_percentage: intOrNull(editDiscountPercentage),
         type: editType,
         image_url: editImageUrl || null,
       };

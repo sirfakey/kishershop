@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email</title>
+    <title>Verify Your Email — Kisher.Shop</title>
     <style>
         body {
             margin: 0;
@@ -33,20 +33,19 @@
             color: #0f172a;
             font-size: 24px;
             font-weight: 900;
-            text-align: center;
         }
         h1 {
             color: #f1f5f9;
             font-size: 20px;
             font-weight: 800;
-            margin: 0 0 8px 0;
+            margin: 0 0 8px;
             text-align: center;
         }
-        p.subtitle {
+        .subtitle {
             color: #94a3b8;
             font-size: 14px;
             text-align: center;
-            margin: 0 0 28px 0;
+            margin: 0 0 28px;
             line-height: 1.5;
         }
         .code-box {

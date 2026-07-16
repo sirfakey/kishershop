@@ -1,0 +1,19 @@
+# robots.txt for Kisher.Shop
+# https://kisher.shop
+
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /admin
+Disallow: /admin/
+
+# Block admin login and console from indexing
+Disallow: /*/login
+
+# Allow crawling of assets
+Allow: /assets/
+Allow: /bkash-logo.png
+Allow: /nagad-logo.png
+Allow: /favicon.svg
+
+Sitemap: https://kisher.shop/sitemap.xml

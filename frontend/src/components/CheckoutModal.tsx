@@ -20,12 +20,14 @@ const INPUT_CLASSES =
 
 interface CheckoutModalProps {
   product: Product;
+  quantity?: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export default function CheckoutModal({
   product,
+  quantity = 1,
   onClose,
   onSuccess,
 }: CheckoutModalProps) {
@@ -146,7 +148,7 @@ export default function CheckoutModal({
         null,
         {
           method: "POST",
-          body: JSON.stringify({ code, product_price: productPrice }),
+          body: JSON.stringify({ code, product_price: subtotal }),
         },
       );
       if (!data.valid) {
@@ -177,14 +179,15 @@ export default function CheckoutModal({
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   const productPrice = parseFloat(product.price);
+  const subtotal = productPrice * quantity;
 
   // Backend applies coupon first, then points — maxRedeemable caps at price AFTER coupon
   const maxRedeemable = user
-    ? Math.min(user.points, Math.floor(Math.max(0, productPrice - couponDiscount)))
+    ? Math.min(user.points, Math.floor(Math.max(0, subtotal - couponDiscount)))
     : 0;
   const pointsDiscount = redeemPoints ? pointsToRedeem : 0;
   // Align with backend ordering: coupon first, then points
-  const finalPrice = Math.max(0, productPrice - couponDiscount - pointsDiscount);
+  const finalPrice = Math.max(0, subtotal - couponDiscount - pointsDiscount);
 
   // Clamp pointsToRedeem when couponDiscount changes (shrinks the cap)
   useEffect(() => {
@@ -277,15 +280,16 @@ export default function CheckoutModal({
     // For backward compat: include legacy account_credentials as empty string
     payload.account_credentials = "";
 
-    // Single-product checkout
-    payload.product_name = product.name;
-    payload.product_id = product.id;
-    payload.price = productPrice;
-    // Attach structured custom_fields directly
+    // Build line item with quantity — backend resolves price server-side
+    const lineItem: Record<string, unknown> = {
+      product_id: product.id,
+      quantity: quantity,
+    };
     const cf = buildCustomFields(formValues);
     if (cf) {
-      payload.custom_fields = cf;
+      lineItem.custom_fields = cf;
     }
+    payload.items = [lineItem];
 
     // Attach points redemption if user is authenticated
     if (user && redeemPoints && pointsToRedeem > 0) {
@@ -727,7 +731,12 @@ export default function CheckoutModal({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-white truncate">{product.name}</p>
+                  <p className="text-sm font-bold text-white truncate">
+                    {product.name}
+                    {quantity > 1 && (
+                      <span className="text-slate-400 ml-1 font-normal">×{quantity}</span>
+                    )}
+                  </p>
                   <p className="text-[10px] uppercase tracking-wider text-slate-500">{product.type.replace("-", " ")}</p>
                 </div>
               </div>
@@ -735,8 +744,15 @@ export default function CheckoutModal({
               {/* Price breakdown */}
               <div className="rounded-lg bg-slate-900 p-3 space-y-2 text-sm">
                 <div className="flex justify-between text-slate-400">
-                  <span>Subtotal</span>
-                  <span className="text-white font-semibold">৳{productPrice.toLocaleString()}</span>
+                  <span>
+                    Subtotal
+                    {quantity > 1 && (
+                      <span className="text-slate-500">
+                        {" "}({quantity} × ৳{productPrice.toLocaleString()})
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-white font-semibold">৳{subtotal.toLocaleString()}</span>
                 </div>
                 {product.original_price && parseFloat(product.original_price) > productPrice && (
                   <div className="flex justify-between text-slate-500 text-xs">
@@ -909,7 +925,7 @@ export default function CheckoutModal({
                     </div>
                   </div>
                 )}
-                {user.points >= productPrice && (
+                {user.points >= subtotal && (
                   <p className="text-xs text-amber-400 font-semibold">🎉 Enough points to pay in full!</p>
                 )}
               </div>

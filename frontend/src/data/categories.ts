@@ -46,6 +46,14 @@ export interface SingleCategoryResponse {
   products: Product[];
 }
 
+// ─── Client-side Cart ─────────────────────────────────
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  customFields: Record<string, string> | null;
+}
+
 // ─── Customer Account Types ──────────────────────────────
 
 export interface CustomerUser {

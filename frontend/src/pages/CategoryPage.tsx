@@ -25,7 +25,15 @@ export default function CategoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
+
+  // ── Per-card quantity state ──
+  const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const getQty = (productId: number) => quantities[productId] ?? 1;
+  const setQty = (productId: number, qty: number) => {
+    setQuantities((prev) => ({ ...prev, [productId]: Math.max(1, qty) }));
+  };
 
   // Dynamic SEO for this category page
   const seoTitle = category ? `${category.name} Marketplace` : undefined;
@@ -196,27 +204,73 @@ export default function CategoryPage() {
 
                   {/* ── Footer: pinned to bottom via mt-auto ── */}
                   <div className="mt-auto flex flex-col gap-3 w-full">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-xl font-black text-teal-400">
-                        ৳{currentPrice.toLocaleString()}
-                      </span>
-                      {originalPrice && originalPrice > currentPrice && (
-                        <span className="text-xs text-slate-500 line-through">
-                          ৳{originalPrice.toLocaleString()}
-                        </span>
-                      )}
-                      {hasDiscount && (
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${discountBadgeColors}`}
+                    {(() => {
+                      const qty = getQty(product.id);
+                      const displayTotal = currentPrice * qty;
+                      return (
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-xl font-black text-teal-400">
+                            ৳{displayTotal.toLocaleString()}
+                          </span>
+                          {qty > 1 && (
+                            <span className="text-[11px] text-slate-500">
+                              ({qty} × ৳{currentPrice.toLocaleString()})
+                            </span>
+                          )}
+                          {originalPrice && originalPrice > currentPrice && (
+                            <span className="text-xs text-slate-500 line-through">
+                              ৳{(originalPrice * qty).toLocaleString()}
+                            </span>
+                          )}
+                          {hasDiscount && (
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${discountBadgeColors}`}
+                            >
+                              -{discountPct}%
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* ── Quantity selector + Buy Now ── */}
+                    <div className="flex items-center gap-2">
+                      {/* Compact quantity selector */}
+                      <div className="flex items-center rounded-xl border border-slate-700 bg-slate-900 text-sm font-bold text-white overflow-hidden shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQty(product.id, getQty(product.id) - 1);
+                          }}
+                          className="px-2.5 py-2 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors select-none"
+                          aria-label="Decrease quantity"
                         >
-                          -{discountPct}%
+                          −
+                        </button>
+                        <span className="min-w-[2rem] text-center text-sm tabular-nums select-none">
+                          {getQty(product.id)}
                         </span>
-                      )}
-                    </div>
-                    <div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQty(product.id, getQty(product.id) + 1);
+                          }}
+                          className="px-2.5 py-2 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors select-none"
+                          aria-label="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      {/* Buy Now — takes remaining space */}
                       <button
-                        onClick={() => setSelectedProduct(product)}
-                        className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors"
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setSelectedQuantity(getQty(product.id));
+                        }}
+                        className="flex-grow rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500 transition-colors"
                       >
                         Buy Now
                       </button>
@@ -236,8 +290,9 @@ export default function CategoryPage() {
 
       {/* Checkout Overlay Modal Mount */}
       {selectedProduct && (
-        <CheckoutModal 
+        <CheckoutModal
           product={selectedProduct}
+          quantity={selectedQuantity}
           onClose={() => setSelectedProduct(null)}
           onSuccess={() => {
             setSelectedProduct(null);
